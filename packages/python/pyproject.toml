@@ -1,0 +1,118 @@
+[tool.poetry]
+name = "mainframe-orchestra"
+version = "0.0.1"
+description = "Mainframe-Orchestra is a lightweight, open-source python framework for building LLM based pipelines and multi-agent teams"
+authors = [
+    "Mainframe Computer Inc. <hi@mainfra.me>",
+    "Philippe Andre Page <philippe@mainfra.me>"
+]
+readme = "README.md"
+packages = [{include = "mainframe_orchestra"}]
+license = "Apache 2.0"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "*"
+pydantic = ">=2.0"
+anthropic = "*"
+openai = ">=1.0"
+cohere = "*"
+beautifulsoup4 = "*"
+tqdm = "*"
+python-dotenv = "*"
+PyYAML = "*"
+ollama = "*"
+lxml = "*"
+halo = "*"
+groq = "*"
+numpy = "*"
+elevenlabs = "*"
+faiss-cpu = "*"
+fredapi = "*"
+yfinance = "*"
+yahoofinance = "*"
+pinecone = "*"
+sentence_splitter = "*"
+igraph = "*"
+leidenalg = "*"
+fake-useragent = "*"
+
+[tool.poetry.extras]
+langchain_tools = [
+    "langchain-core",
+    "langchain-community",
+    "langchain-openai"
+]
+matplotlib_tools = [
+    "matplotlib"
+]
+yahoo_finance_tools = [
+    "yfinance",
+    "yahoofinance",
+    "pandas"
+]
+fred_tools = [
+    "fredapi",
+    "pandas"
+]
+
+[tool.poetry.dependencies.langchain-core]
+version = "*"
+optional = true
+
+[tool.poetry.dependencies.langchain-community]
+version = "*"
+optional = true
+
+[tool.poetry.dependencies.langchain-openai]
+version = "*"
+optional = true
+
+[tool.poetry.dependencies.matplotlib]
+version = "*"
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0,<9.0.0"
+black = ">=23.0,<25.0"
+isort = ">=5.0,<6.0"
+mypy = ">=1.0,<2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.urls]
+"Homepage" = "https://github.com/mainframecomputer/orchestra/"
+"Bug Tracker" = "https://github.com/mainframecomputer/orchestra/issues"
+"Documentation" = "https://orchestra.org"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
