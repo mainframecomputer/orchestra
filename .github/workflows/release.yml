@@ -18,17 +18,23 @@ jobs:
       with:
         python-version: '3.x'
 
+    - name: Install Poetry
+      run: |
+        curl -sSL https://install.python-poetry.org | python3 -
+        export PATH="$HOME/.local/bin:$PATH"
+
     - name: Install dependencies
-      run: pip install build twine
+      working-directory: ./packages/python
+      run: poetry install
 
     - name: Build package
       working-directory: ./packages/python
-      run: python -m build
+      run: poetry build
 
     - name: Publish to PyPI
       working-directory: ./packages/python
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_KEY }}
-      run: twine upload dist/*
+      run: poetry publish --username $TWINE_USERNAME --password $TWINE_PASSWORD
 
