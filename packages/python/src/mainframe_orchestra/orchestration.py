@@ -30,8 +30,8 @@ class Conduct:
                 for agent_id in sorted(agent_map.keys())
             )
             
-            async def conduct_tool(instruction: List, event_queue: Optional[Queue] = None, **kwargs) -> Any:
-                print(f"[DELEGATION] Starting conduct delegation with {len(instruction)} tasks")
+            async def conduct_tool(tasks: List, event_queue: Optional[Queue] = None, **kwargs) -> Any:
+                print(f"[DELEGATION] Starting conduct delegation with {len(tasks)} tasks")
                 
                 # Add max iteration limits
                 MAX_AGENT_ITERATIONS = 3  # Maximum times an agent can attempt to complete a task
@@ -47,8 +47,8 @@ class Conduct:
                     "type": "delegation",
                     "role": "assistant",
                     "name": "delegation",
-                    "content": f"Starting multi-agent flow with {len(instruction)} tasks",
-                    "tasks": [task.get('task_id') for task in instruction],
+                    "content": f"Starting multi-agent flow with {len(tasks)} tasks",
+                    "tasks": [task.get('task_id') for task in tasks],
                     "timestamp": current_time
                 }
                 
@@ -58,13 +58,13 @@ class Conduct:
                 if kwargs.get('callback'):
                     await kwargs['callback'](delegation_start)
                 
-                if not instruction or not isinstance(instruction, list):
-                    raise ValueError(f"instruction must be a non-empty list of task dictionaries. Received: {instruction}")
+                if not tasks or not isinstance(tasks, list):
+                    raise ValueError(f"tasks must be a non-empty list of task dictionaries. Received: {tasks}")
 
                 all_results = {}
                 sent_messages = set()
                 
-                for instruction_item in instruction:
+                for instruction_item in tasks:
                     # Convert dict to TaskInstruction model
                     task = TaskInstruction.model_validate(instruction_item)
                     
@@ -131,7 +131,7 @@ class Conduct:
                             else:
                                 # Add role field for tool calls
                                 if result.get("type") == "tool_call":
-                                    result["role"] = "delegation" if result.get("tool") == "multi_agent_flow" else "function"
+                                    result["role"] = "delegation" if result.get("tool") == "conduct_tool" else "function"
                                 
                                 result.update({
                                     "agent_id": target_agent.agent_id,
@@ -177,8 +177,12 @@ class Conduct:
                     all_results[task.task_id] = f"{context}\n\n{task_result}" if context else task_result
                 
                 # Return the final combined results
-                return "\n\n".join(f"Task '{task_id}' result:\n{result}" 
-                                 for task_id, result in all_results.items())
+                return "\n\n".join(
+                    f"Task '{task_id}':\n"
+                    f"Instruction: {next((item['instruction'] for item in tasks if item['task_id'] == task_id), '')}\n"
+                    f"Result: {result}"
+                    for task_id, result in all_results.items()
+                )
 
             conduct_tool.__name__ = "conduct_tool"
             conduct_tool.__doc__ = f"""Tool function to orchestrate multiple agents in a sequential task flow with data passing.
@@ -186,21 +190,30 @@ class Conduct:
             Your team members can complete tasks iteratively, Agents can handle multiple similar tasks in one instruction.
             For example, if you want a travel agent to find flights and a spreadsheet agent to create a spreadsheet with the flight options, you *MUST* include the task_id of the travel related task in the "use_output_from" field of the spreadsheet agent's task.
             For example, if you want an agent to extract data from a webpage, you should tell it exactly what data to extract, and that its final response should be a comprehensive summary of the data extracted with in-text URL citations.
-            Your instruction should be extensive, exhaustive, and well engineered prompt instruction for the agent. Don't just issue a simple instruction string; tell it what to do and achieve, and what its final response should be.
+            Your instruction should be an extensive and well engineered prompt instruction for the agent. Don't just issue a simple instruction string; tell it what to do and achieve, and what its final response should be.
 
-            Available Agents (to be used as agent_id in the multi_agent_flow instruction):
+            Available Agents (to be used as agent_id in the conduct_tool instruction):
             {available_agents}
 
             Tool name: conduct_tool
             
             Args:
-                instruction (List[dict]): List of instruction objects with format:
-                    {{
-                        "task_id": str,  # Unique identifier for this task (e.g., "extract_data", "task_1", etc.)
-                        "agent_id": str,  # ID of the agent to use (must be in available_ids, case-sensitive)
-                        "instruction": str,  # Instruction for the agent (should be a comprehensive prompt for the agent)
-                        "use_output_from": List[str] = [],  # List of task_ids whose results should be included in this instruction. **If this task depends on the output of another task, you MUST include the task_id of the task it depends on**. Accepts multiple task_ids.
-                    }}
+                tasks (List[dict]): List of task objects with format:
+                    [
+                        {{
+                            "task_id": str,  # Unique identifier for this task (e.g., "task_1", "extract_data")
+                            "agent_id": str,  # ID of the agent to use (must be in available_ids, case-sensitive)
+                            "instruction": str,  # Instruction for the agent (should be a comprehensive prompt)
+                            "use_output_from": List[str] = []  # List of task_ids to use results from
+                        }},
+                        {{
+                            "task_id": str,  # Unique identifier for this task (e.g., "task_2" or "finalize_report")
+                            "agent_id": str,  # ID of the agent to use
+                            "instruction": str,  # Instruction for the agent
+                            "use_output_from": List[str] = []  # Can reference previous task_ids
+                        }},
+                        ...  # Additional tasks can be added as needed
+                    ]
 
             Returns:
                 dict: A dictionary with keys "results" and "tool_calls".
