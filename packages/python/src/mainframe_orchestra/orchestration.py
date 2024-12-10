@@ -170,7 +170,11 @@ class Conduct:
                         messages=messages  # Pass messages instead of conversation_history
                     )
                     
-                    all_results[task.task_id] = task_result
+                    # Include context in the result
+                    context = "\n\n".join(f"Results from task '{dep_id}':\n{all_results[dep_id]}" 
+                                          for dep_id in task.use_output_from 
+                                          if dep_id in all_results)
+                    all_results[task.task_id] = f"{context}\n\n{task_result}" if context else task_result
                 
                 # Return the final combined results
                 return "\n\n".join(f"Task '{task_id}' result:\n{result}" 
