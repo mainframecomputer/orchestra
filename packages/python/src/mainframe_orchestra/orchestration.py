@@ -20,13 +20,16 @@ class Conduct:
     @staticmethod
     def conduct_tool(*agents: Agent) -> Callable:
         """Returns the conduct_tool function directly."""
-        def create_conduct_tool(agents: List[Agent]) -> Callable:
+        def create_conduct_tool(agents: List[Any]) -> Callable:
             agent_map = {agent.agent_id: agent for agent in agents}
-            agent_tools = {agent.agent_id: [tool.__name__ for tool in getattr(agent, 'tools', [])] for agent in agents}
+            agent_tools = {
+                agent.agent_id: [tool.__name__ for tool in getattr(agent, 'tools', []) or []] 
+                for agent in agents
+            }
             
             # Format available agents string with their tools
             available_agents = "\n                ".join(
-                f"- {agent_id}"
+                f"- {agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])}"
                 for agent_id in sorted(agent_map.keys())
             )
             
@@ -186,10 +189,9 @@ class Conduct:
 
             conduct_tool.__name__ = "conduct_tool"
             conduct_tool.__doc__ = f"""Tool function to orchestrate multiple agents in a sequential task flow with data passing.
-            Consider the flow of information through the task flow when writing your orchestration instruction: **if the final task depends on the output of an earlier task, you must include the task_id of the task it depends on in the "use_output_from" field**.
+            Consider the flow of information through the tasks when writing your orchestration: **if the final task depends on the output of an earlier task, you must include the task_id of the task it depends on in the "use_output_from" field**.
             Your team members can complete tasks iteratively, Agents can handle multiple similar tasks in one instruction.
             For example, if you want a travel agent to find flights and a spreadsheet agent to create a spreadsheet with the flight options, you *MUST* include the task_id of the travel related task in the "use_output_from" field of the spreadsheet agent's task.
-            For example, if you want an agent to extract data from a webpage, you should tell it exactly what data to extract, and that its final response should be a comprehensive summary of the data extracted with in-text URL citations.
             Your instruction should be an extensive and well engineered prompt instruction for the agent. Don't just issue a simple instruction string; tell it what to do and achieve, and what its final response should be.
 
             Available Agents (to be used as agent_id in the conduct_tool instruction):
@@ -202,13 +204,13 @@ class Conduct:
                     [
                         {{
                             "task_id": str,  # Unique identifier for this task (e.g., "task_1", "extract_data")
-                            "agent_id": str,  # ID of the agent to use (must be in available_ids, case-sensitive)
+                            "agent_id": str,  # ID of the agent to employ (must be in available_ids, case-sensitive)
                             "instruction": str,  # Instruction for the agent (should be a comprehensive prompt)
                             "use_output_from": List[str] = []  # List of task_ids to use results from
                         }},
                         {{
                             "task_id": str,  # Unique identifier for this task (e.g., "task_2" or "finalize_report")
-                            "agent_id": str,  # ID of the agent to use
+                            "agent_id": str,  # ID of the agent to employ
                             "instruction": str,  # Instruction for the agent
                             "use_output_from": List[str] = []  # Can reference previous task_ids
                         }},
@@ -230,10 +232,13 @@ class Compose:
         """Returns the composition tool function directly."""
         def create_composition_tool(agents: List[Agent]) -> Callable:
             agent_map = {agent.agent_id: agent for agent in agents}
-            agent_tools = {agent.agent_id: [tool.__name__ for tool in getattr(agent, 'tools', [])] for agent in agents}
+            agent_tools = {
+                agent.agent_id: [tool.__name__ for tool in getattr(agent, 'tools', []) or []] 
+                for agent in agents
+            }
             # Format available agents string
             available_agents = "\n                ".join(
-                f"- {agent_id}'s tools: {', '.join(agent_tools[agent_id])})"
+                f"- {agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])}"
                 for agent_id in sorted(agent_map.keys())
             )
             async def composition_tool(goal: str, event_queue: Optional[Queue] = None, **kwargs) -> Any:

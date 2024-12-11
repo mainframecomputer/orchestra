@@ -30,6 +30,7 @@ class LogColors:
 def parse_json_response(response: str) -> dict:
     """
     Parse a JSON response, handling potential formatting issues.
+    Now more lenient with extra text after valid JSON.
 
     Args:
         response (str): The JSON response string to parse.
@@ -41,18 +42,24 @@ def parse_json_response(response: str) -> dict:
         ValueError: If the JSON cannot be parsed after multiple attempts.
     """
     try:
+        # First attempt: Try to parse the entire response
         return json.loads(response)
     except json.JSONDecodeError as e:
         logger.debug(f"Initial JSON parse failed: {e}")
-        # If json.loads fails, extract JSON using regex
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group())
-            except json.JSONDecodeError as e:
-                logger.debug(f"Regex JSON extraction failed: {e}")
         
-        # If regex fails, try to cleave strings before and after JSON
+        # Second attempt: Find the first complete JSON object
+        json_pattern = r'(\{(?:[^{}]|(?:\{[^{}]*\}))*\})'
+        json_matches = re.finditer(json_pattern, response, re.DOTALL)
+        
+        for match in json_matches:
+            try:
+                result = json.loads(match.group(1))
+                if isinstance(result, dict) and "tool_calls" in result:
+                    return result
+            except json.JSONDecodeError:
+                continue
+        
+        # Third attempt: Try to cleave strings before and after JSON
         cleaved_json = response.strip().lstrip('`').rstrip('`')
         try:
             return json.loads(cleaved_json)
@@ -101,8 +108,8 @@ def print_event(event: Dict[str, Any]) -> None:
         if event.get("streaming"):
             print(event["content"], end="", flush=True)
         else:
-            logger.info("Initial plan provided")
-            print(f"\n{LogColors.CYAN}Initial Plan: {LogColors.RESET}{event['content']}\n")
+            logger.info("Initial response provided")
+            print(f"\n{LogColors.CYAN}Initial Response: {LogColors.RESET}{event['content']}\n")
     elif event["type"] == "final_response":
         if event.get("streaming"):
             print(event["content"], end="", flush=True)
@@ -329,7 +336,7 @@ class Task(BaseModel):
                 "context": context,
                 "instruction": instruction,
                 "llm": llm or (agent.llm if agent else None),
-                "tools": tools or (agent.tools if agent else None),
+                "tools": tools or getattr(agent, 'tools', None) or None,  # Handle missing tools attribute
                 "image_data": image_data,
                 "temperature": temperature or (agent.temperature if agent else 0.7),
                 "max_tokens": max_tokens or (agent.max_tokens if agent else 4000),
@@ -548,7 +555,8 @@ class Task(BaseModel):
 
             no_tools_format = """{
     "tool_calls": []
-}"""
+}
+IMPORTANT: When indicating no more tools are needed, return ONLY the above JSON with no additional text or explanation. You will have another opportunity to provide your final response later."""
 
             tool_call_format = tool_call_format_with_summary if self.tool_summaries else tool_call_format_basic
 
@@ -1022,7 +1030,7 @@ def default_logger(event: Dict[str, Any]) -> None:
         else:
             logger.info("Initial response provided")
             logger.debug(f"Initial response content: {event['content']}")
-            print(f"\n{LogColors.CYAN}Initial Plan: {LogColors.RESET}{event['content']}\n")
+            print(f"\n{LogColors.CYAN}Initial Response: {LogColors.RESET}{event['content']}\n")
     
     elif event["type"] == "final_response":
         if event.get("streaming"):
