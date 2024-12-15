@@ -1,0 +1,37 @@
+{
+  "subdomain": "orchestra",
+  "guides": [
+    {
+      "name": "Orchestra guides",
+      "sidebar": [
+        {
+          "path": "docs/introduction.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/tasks.md",
+          "type": "page"
+        },
+        {
+          "name": "Tools",
+          "type": "folder",
+          "children": [
+            {
+              "path": "docs/tools/custom_tools.md",
+              "type": "page"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "references": [],
+  "publishOnMerge": true,
+  "siteConfig": {
+    "logo": {
+      "darkMode": "https://scalar.com/logo-light.svg",
+      "lightMode": "https://scalar.com/logo-dark.svg"
+    },
+    "footer": ""
+  }
+}
