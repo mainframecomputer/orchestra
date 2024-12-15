@@ -1,4 +1,4 @@
-# Writing CustomTools
+# Writing Custom Tools
 
 While the Orchestra framework provides a library of built-in tools, you may often need to create custom tools to extend its functionality or integrate specific libraries. This is one of the most powerful aspects of Orchestra because custom tools are what will allow your agents to perform tasks that are perfectly tailored to your needs.
 
