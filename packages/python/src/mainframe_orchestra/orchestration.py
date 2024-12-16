@@ -1,14 +1,13 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-from typing import List, Callable, Any, Set
+import json
+from typing import List, Callable, Any
 from datetime import datetime
-from typing import Any
 from typing import Optional
 from multiprocessing import Queue
-import json
+from pydantic import BaseModel
 from .task import Task
 from .agent import Agent
-from pydantic import BaseModel
 
 class TaskInstruction(BaseModel):
     task_id: str
@@ -204,13 +203,13 @@ class Conduct:
                     [
                         {{
                             "task_id": str,  # Unique identifier for this task (e.g., "task_1", "extract_data")
-                            "agent_id": str,  # ID of the agent to employ (must be in available_ids, case-sensitive)
+                            "agent_id": str,  # ID of the agent to use (must be in available_ids, case-sensitive)
                             "instruction": str,  # Instruction for the agent (should be a comprehensive prompt)
                             "use_output_from": List[str] = []  # List of task_ids to use results from
                         }},
                         {{
                             "task_id": str,  # Unique identifier for this task (e.g., "task_2" or "finalize_report")
-                            "agent_id": str,  # ID of the agent to employ
+                            "agent_id": str,  # ID of the agent to use
                             "instruction": str,  # Instruction for the agent
                             "use_output_from": List[str] = []  # Can reference previous task_ids
                         }},
@@ -242,7 +241,6 @@ class Compose:
                 for agent_id in sorted(agent_map.keys())
             )
             async def composition_tool(goal: str, event_queue: Optional[Queue] = None, **kwargs) -> Any:
-                print(f"[COMPOSITION DEBUG] Starting composition flow to create plan")
                 
                 # KEEP: Create composer agent instance with all these fields
                 composer_agent = Agent(
@@ -286,7 +284,6 @@ Your plan should outline:
                         event_queue=event_queue,
                         messages=messages
                     )
-                    print(f"[COMPOSITION DEBUG] Task result: {task_result}")
                     return task_result
                 except Exception as e:
                     print(f"[COMPOSITION ERROR] Failed to create task: {str(e)}")
