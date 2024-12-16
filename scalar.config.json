@@ -9,10 +9,6 @@
           "type": "page"
         },
         {
-          "path": "docs/src/introduction.md",
-          "type": "page"
-        },
-        {
           "path": "docs/src/tasks.md",
           "type": "page"
         },
