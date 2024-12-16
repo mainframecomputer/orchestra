@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "mainframe-orchestra"
-version = "0.0.6"
-description = "Mainframe-Orchestra is a lightweight, open-source agentic framework for building LLM based pipelines and multi-agent teams"
+version = "0.0.7"
+description = "Mainframe-Orchestra is a lightweight, open-source agentic framework for building LLM based pipelines and self-orchestrating multi-agent teams"
 authors = [
     "Mainframe Computer Inc. <hi@mainfra.me>",
     "Philippe Andre Page <philippe@mainfra.me>"
