@@ -1,5 +1,5 @@
 
-# Orchestra
+# Introduction
 
 Orchestra is a lightweight and intuitive open-source framework for creating AI-driven task pipelines and multi-agent teams, centered around the concept of Tasks rather than conversation patterns.
 
