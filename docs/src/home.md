@@ -7,7 +7,7 @@ Orchestra is a lightweight and intuitive open-source framework for creating AI-d
 
 Orchestra is built around the concept of task completion, rather than conversation patterns. It has a modular architecture with interchangeable components. It's meant to be lightweight with minimal dependencies, and it offers transparency through a flat hierarchy and full prompt exposure.
 
-![Orchestra Orchestrator](../static/orchestrator.png)
+![Orchestra Orchestrator](https://utfs.io/f/lKo6VaP8kaqVeFkvKtdZGxnUaslhq80BRH2VtP5O6oNbFvjw)
 
 ### Core Components
 
