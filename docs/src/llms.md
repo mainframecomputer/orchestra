@@ -11,6 +11,8 @@ The LLM interfaces are defined in the llm.py module. This module contains severa
 - OpenrouterModels
 - OllamaModels
 - GroqModels
+- TogetheraiModels
+- GeminiModels
 
 Each class contains static methods corresponding to specific models offered by the provider, following a consistent structure.
 
@@ -23,6 +25,8 @@ Orchestra supports a wide range of language models from various providers. Here'
 - Openrouter Models: Various models including Anthropic Claude, OpenAI GPT, Llama, Mistral AI, and more
 - Ollama Models: Llama 3, Gemma, Mistral, Qwen, Phi-3, Llama 2, CodeLlama, LLaVA, Mixtral
 - Groq Models: Gemma, Llama3, Llama3.1, Mixtral
+- Togetherai Models: Meta Llama 3.1, Mixtral, Mistral, many other open source models
+- Gemini Models: Gemini 2.0, Gemini 1.5 Pro, Gemini 1.5 Flash, Gemini 1.5 Pro (Flash)
 
 ### Integrating Language Models
 
@@ -34,7 +38,7 @@ from mainframe_orchestra import OpenrouterModels
 llm = OpenrouterModels.haiku
 ```
 
-In this example, we're using the OpenrouterModels.haiku model. You can then assign llm to any agent. The llm parameter is passed to the Task.create() method, allowing the task to use the specified language model for generating responses.
+In this example, we're using the OpenrouterModels.haiku model. You can then assign llm to any agent. The llm parameter is passed to the Task.create() method, allowing the task to use the specified language model for generating responses.This is helpful if you want to use the same model for multiple agents. Alternatively, you can pass the model directly to the agent as a parameter, like `llm=OpenrouterModels.haiku`, if you want certain agents to use specific models.
 
 ### Language Model Selection Considerations
 
@@ -53,6 +57,24 @@ Orchestra supports several advanced techniques for working with language models:
 - Chaining Multiple Models: You can use different models for different stages of a workflow.
 - Model-Agnostic Tasks: Design tasks that can work with various language models by passing the LLM as a parameter.
 - Custom Models: Use the `custom_model` method to work with models not explicitly defined.
+
+### LLM Fallbacks via Lists
+
+You can now specify multiple LLMs for a task, allowing for automatic fallback if the primary LLM fails or times out.
+
+In this example, if `AnthropicModels.sonnet_3_5` fails (e.g., due to rate limiting), the task automatically falls back to `AnthropicModels.haiku_3_5`. You can specify as many LLMs as you want in the list and they will be tried in order. You can have the models fall back to another of the same provider, or you can have them fall back to a different provider if the provider itself fails. This is useful for handling rate limits or other failures that may occur with certain LLMs, particularly in a production environment.
+
+```python
+from mainframe_orchestra import Agent, GitHubTools, AnthropicModels
+
+researcher = Agent(
+    role="GitHub researcher",
+    goal="find relevant Python agent repositories with open issues",
+    attributes="analytical, detail-oriented, able to assess repository relevance and popularity",
+    llm=[AnthropicModels.sonnet_3_5, AnthropicModels.haiku_3_5],
+    tools={GitHubTools.search_repositories, GitHubTools.get_repo_details}
+)
+```
 
 ### Using Custom Models
 

@@ -94,6 +94,24 @@ assistant_agent = Agent(
 
 These additional settings are optional and are often not required unless custom or specific temperature and max tokens are required. The default temperature of 0.7 and max tokens of 4000 covers most use cases, but programming or long responses may benefit from custom temperature and max tokens.
 
+#### LLM Fallbacks via Lists
+
+You can now specify multiple LLMs for a task, allowing for automatic fallback if the primary LLM fails or times out.
+
+In this example, if `AnthropicModels.sonnet_3_5` fails (e.g., due to rate limiting), the task automatically falls back to `AnthropicModels.haiku_3_5`. You can specify as many LLMs as you want in the list and they will be tried in order. You can have the models fall back to another of the same provider, or you can have them fall back to a different provider if the provider itself fails. This is useful for handling rate limits or other failures that may occur with certain LLMs, particularly in a production environment.
+
+```python
+from mainframe_orchestra import Agent, GitHubTools, AnthropicModels
+
+researcher = Agent(
+    role="GitHub researcher",
+    goal="find relevant Python agent repositories with open issues",
+    attributes="analytical, detail-oriented, able to assess repository relevance and popularity",
+    llm=[AnthropicModels.sonnet_3_5, AnthropicModels.haiku_3_5],
+    tools={GitHubTools.search_repositories, GitHubTools.get_repo_details}
+)
+```
+
 ##### Prompting
 
 Prompting involves crafting effective prompts for agent roles, goals, and attributes to elicit desired behaviors and responses from the language model. Here are some tips for effective prompting:
