@@ -5,6 +5,10 @@
       "name": "Orchestra guides",
       "sidebar": [
         {
+          "path": "docs/home.md",
+          "type": "page"
+        },
+        {
           "path": "docs/introduction.md",
           "type": "page"
         },
@@ -13,14 +17,94 @@
           "type": "page"
         },
         {
-          "name": "Tools",
+          "path": "docs/agents.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/multi-agent-teams.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/agentic-tool-use.md",
+          "type": "page"
+        },
+        {
+          "name": "tools",
           "type": "folder",
           "children": [
             {
-              "path": "docs/tools/custom_tools.md",
+              "path": "docs/tools/amadeus_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/audio_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/calculator_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/conversation_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/embeddings_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/faiss_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/file_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/fred_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/github_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/langchain_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/pinecone_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/text_splitters.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/web_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/wikipedia_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/tools/yahoo_finance_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/custom_tools.md",
               "type": "page"
             }
           ]
+        },
+        {
+          "path": "docs/faq.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/llms.md",
+          "type": "page"
         }
       ]
     }
