@@ -109,16 +109,7 @@
       ]
     }
   ],
-  "references": [
-    {
-      "path": "docs/static/orchestra-loops.png",
-      "type": "image"
-    },
-    {
-      "path": "docs/static/orchestrator.png",
-      "type": "image"
-    }
-  ],
+  "references": [],
   "publishOnMerge": true,
   "siteConfig": {
     "logo": {
