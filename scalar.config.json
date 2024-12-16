@@ -5,27 +5,120 @@
       "name": "Orchestra guides",
       "sidebar": [
         {
-          "path": "docs/introduction.md",
+          "path": "docs/src/home.md",
           "type": "page"
         },
         {
-          "path": "docs/tasks.md",
+          "path": "docs/src/introduction.md",
           "type": "page"
         },
         {
-          "name": "Tools",
+          "path": "docs/src/tasks.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/src/agents.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/src/multi-agent-teams.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/src/agentic-tool-use.md",
+          "type": "page"
+        },
+        {
+          "name": "tools",
           "type": "folder",
           "children": [
             {
-              "path": "docs/tools/custom_tools.md",
+              "path": "docs/src/tools/amadeus_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/audio_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/calculator_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/conversation_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/embeddings_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/faiss_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/file_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/fred_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/github_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/langchain_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/pinecone_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/text_splitters.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/web_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/wikipedia_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/tools/yahoo_finance_tools.md",
+              "type": "page"
+            },
+            {
+              "path": "docs/src/custom_tools.md",
               "type": "page"
             }
           ]
+        },
+        {
+          "path": "docs/src/faq.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/src/llms.md",
+          "type": "page"
         }
       ]
     }
   ],
-  "references": [],
+  "references": [
+    {
+      "path": "docs/static/orchestra-loops.png",
+      "type": "image"
+    },
+    {
+      "path": "docs/static/orchestrator.png",
+      "type": "image"
+    }
+  ],
   "publishOnMerge": true,
   "siteConfig": {
     "logo": {
