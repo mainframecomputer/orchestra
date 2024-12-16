@@ -1,27 +1,37 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-import os, time, requests, base64, random, re, asyncio
-from typing import List, Union, Tuple, Optional, Dict, Iterator, AsyncGenerator
-from anthropic import AsyncAnthropic, APIStatusError, APITimeoutError, APIConnectionError, APIResponseValidationError, RateLimitError
-from openai import AsyncOpenAI, OpenAI
-from openai.types.chat import ChatCompletion
-from openai import (
-    APIError,
-    APIConnectionError,
-    APITimeoutError,
-    RateLimitError,
-    AuthenticationError,
-    BadRequestError
-)
-from groq import Groq
-from groq.types.chat import ChatCompletion
-import ollama
-from halo import Halo
+import os
+import time
+import random
+import re
 import threading
 import json
-import re
+from typing import List, Dict, Union, Tuple, Optional, Iterator, AsyncGenerator
+from halo import Halo
+from anthropic import (
+    AsyncAnthropic,
+    APIStatusError as AnthropicStatusError,
+    APITimeoutError as AnthropicTimeoutError,
+    APIConnectionError as AnthropicConnectionError,
+    APIResponseValidationError as AnthropicResponseValidationError,
+    RateLimitError as AnthropicRateLimitError
+)
+from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from openai import (
+    OpenAI,
+    AsyncOpenAI,
+    APIError as OpenAIAPIError,
+    APIConnectionError as OpenAIConnectionError,
+    APITimeoutError as OpenAITimeoutError,
+    RateLimitError as OpenAIRateLimitError,
+    AuthenticationError as OpenAIAuthenticationError,
+    BadRequestError as OpenAIBadRequestError
+)
+from groq import Groq
+from groq.types.chat import ChatCompletion as GroqChatCompletion
+import ollama
 
-# Try to import config, fall back to environment variables if not found
+# Import config, fall back to environment variables if not found
 try:
     from .config import config
 except ImportError:
@@ -128,21 +138,30 @@ def parse_json_response(response: str) -> dict:
         ValueError: If the JSON cannot be parsed after multiple attempts.
     """
     try:
+        # First attempt: Try to parse the entire response
         return json.loads(response)
-    except json.JSONDecodeError:
-        # Try to extract JSON using regex
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group())
-            except json.JSONDecodeError:
-                pass
+    except json.JSONDecodeError as e:
+        print_color(f"Initial JSON parse failed: {e}", 'yellow')
         
-        # Try to cleave strings before and after JSON
+        # Second attempt: Find the first complete JSON object
+        json_pattern = r'(\{(?:[^{}]|(?:\{[^{}]*\}))*\})'
+        json_matches = re.finditer(json_pattern, response, re.DOTALL)
+        
+        for match in json_matches:
+            try:
+                result = json.loads(match.group(1))
+                # Validate it's a dict and has expected structure
+                if isinstance(result, dict):
+                    return result
+            except json.JSONDecodeError:
+                continue
+        
+        # Third attempt: Try to cleave strings before and after JSON
         cleaved_json = response.strip().lstrip('`').rstrip('`')
         try:
             return json.loads(cleaved_json)
         except json.JSONDecodeError as e:
+            print_error(f"All JSON parsing attempts failed: {e}")
             raise ValueError(f"Invalid JSON structure: {e}")
 
 class OpenaiModels:
@@ -221,6 +240,14 @@ class OpenaiModels:
             Union[Tuple[str, Optional[Exception]], Iterator[str]]: The response text and any exception encountered, or an iterator for streaming.
         """
 
+        # Add check for non-streaming models (currently only o1 models) at the start
+        if stream and model in ["o1-mini", "o1-preview"]:
+            print_error(f"Streaming is not supported for {model}. Falling back to non-streaming request.")
+            stream = False
+
+        spinner = Halo(text='Sending request to OpenAI...', spinner='dots')
+        spinner.start()
+        
         try:
             api_key = config.validate_api_key("OPENAI_API_KEY")
             client = AsyncOpenAI(api_key=api_key)
@@ -253,6 +280,7 @@ class OpenaiModels:
                 print_api_request(json.dumps(msg, indent=2))
 
             if stream:
+                spinner.stop()  # Stop spinner before streaming
                 async def stream_generator():
                     try:
                         stream_params = {**request_params, "stream": True}
@@ -263,23 +291,66 @@ class OpenaiModels:
                                 if debug:
                                     print_debug(f"Streaming chunk: {content}")
                                 yield content
+                    except OpenAIAuthenticationError as e:
+                        print_error(f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}")
+                        yield ""
+                    except OpenAIBadRequestError as e:
+                        print_error(f"Invalid request parameters: {str(e)}")
+                        yield ""
+                    except (OpenAIConnectionError, OpenAITimeoutError) as e:
+                        print_error(f"Connection error: {str(e)}")
+                        yield ""
+                    except OpenAIRateLimitError as e:
+                        print_error(f"Rate limit exceeded: {str(e)}")
+                        yield ""
+                    except OpenAIAPIError as e:
+                        print_error(f"OpenAI API error: {str(e)}")
+                        yield ""
                     except Exception as e:
-                        print_error(f"An error occurred during streaming: {e}")
+                        print_error(f"An unexpected error occurred during streaming: {e}")
                         yield ""
 
                 return stream_generator()
 
             # Non-streaming logic
-            response = await client.chat.completions.create(**request_params)
+            spinner.text = f"Waiting for {model} response..."
+            response: OpenAIChatCompletion = await client.chat.completions.create(**request_params)
             
             content = response.choices[0].message.content
-            print_conditional_color("\n[LLM] Actual API Response:", 'light_blue')
-            print_api_response(content.strip())
+            spinner.succeed('Request completed')
+            
+            if verbosity:
+                print_conditional_color("\n[LLM] Actual API Response:", 'light_blue')
+                print_api_response(content.strip())
             return content.strip(), None
 
+        except OpenAIAuthenticationError as e:
+            spinner.fail('Authentication failed')
+            print_error(f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}")
+            return "", e
+        except OpenAIBadRequestError as e:
+            spinner.fail('Invalid request')
+            print_error(f"Invalid request parameters: {str(e)}")
+            return "", e
+        except (OpenAIConnectionError, OpenAITimeoutError) as e:
+            spinner.fail('Connection failed')
+            print_error(f"Connection error: {str(e)}")
+            return "", e
+        except OpenAIRateLimitError as e:
+            spinner.fail('Rate limit exceeded')
+            print_error(f"Rate limit exceeded: {str(e)}")
+            return "", e
+        except OpenAIAPIError as e:
+            spinner.fail('API Error')
+            print_error(f"OpenAI API error: {str(e)}")
+            return "", e
         except Exception as e:
+            spinner.fail('Request failed')
             print_error(f"Unexpected error: {str(e)}")
             return "", e
+        finally:
+            if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
 
     @staticmethod
     def custom_model(model_name: str):
@@ -337,6 +408,9 @@ class AnthropicModels:
                 "Proceeding with standard output.",
                 'yellow'
             )
+        spinner = Halo(text='Sending request to Anthropic...', spinner='dots')
+        spinner.start()
+        
         try:
             api_key = config.validate_api_key("ANTHROPIC_API_KEY")
             client = AsyncAnthropic(api_key=api_key)
@@ -403,7 +477,7 @@ class AnthropicModels:
             # Debug print the request parameters with colors
             print_conditional_color(f"\n[LLM] Anthropic ({model}) Request Messages:", 'cyan')
             print(f"  \033[36msystem_message\033[0m: \033[32m{system_message}\033[0m")  # Print system message
-            print(f"  \033[36mmessages\033[0m:")
+            print("  \033[36mmessages\033[0m:")
             for msg in anthropic_messages:
                 print(f"    \033[32m{msg}\033[0m")
             print(f"  \033[36mtemperature\033[0m: \033[32m{temperature}\033[0m") 
@@ -412,6 +486,7 @@ class AnthropicModels:
 
             # Handle streaming
             if stream:
+                spinner.stop()  # Stop spinner before streaming
                 async def stream_generator():
                     try:
                         response = await client.messages.create(
@@ -440,13 +515,29 @@ class AnthropicModels:
                                 print_error(f"Stream error: {chunk.error}")
                                 break
 
+                    except (AnthropicConnectionError, AnthropicTimeoutError) as e:
+                        print_error(f"Connection error during streaming: {str(e)}")
+                        yield ""
+                    except AnthropicRateLimitError as e:
+                        print_error(f"Rate limit exceeded during streaming: {str(e)}")
+                        yield ""
+                    except AnthropicStatusError as e:
+                        print_error(f"API status error during streaming: {str(e)}")
+                        yield ""
+                    except AnthropicResponseValidationError as e:
+                        print_error(f"Invalid response format during streaming: {str(e)}")
+                        yield ""
+                    except ValueError as e:
+                        print_error(f"Configuration error during streaming: {str(e)}")
+                        yield ""
                     except Exception as e:
-                        print_error(f"An error occurred during streaming: {e}")
+                        print_error(f"An unexpected error occurred during streaming: {e}")
                         yield ""
 
                 return stream_generator()
 
             # Non-streaming logic
+            spinner.text = f"Waiting for {model} response..."
             response = await client.messages.create(
                 model=model,
                 messages=anthropic_messages,
@@ -457,6 +548,7 @@ class AnthropicModels:
             )
             
             content = response.content[0].text if response.content else ""
+            spinner.succeed('Request completed')
 
             if verbosity:
                 print_conditional_color("\n[LLM] Actual API Response:", 'light_blue')
@@ -464,9 +556,33 @@ class AnthropicModels:
 
             return content.strip(), None
 
+        except (AnthropicConnectionError, AnthropicTimeoutError) as e:
+            spinner.fail('Connection failed')
+            print_error(f"Connection error: {str(e)}")
+            return "", e
+        except AnthropicRateLimitError as e:
+            spinner.fail('Rate limit exceeded')
+            print_error(f"Rate limit exceeded: {str(e)}")
+            return "", e
+        except AnthropicStatusError as e:
+            spinner.fail('API Status Error')
+            print_error(f"API Status Error: {str(e)}")
+            return "", e
+        except AnthropicResponseValidationError as e:
+            spinner.fail('Invalid Response Format')
+            print_error(f"Invalid response format: {str(e)}")
+            return "", e
+        except ValueError as e:
+            spinner.fail('Configuration Error')
+            print_error(f"Configuration error: {str(e)}")
+            return "", e
         except Exception as e:
+            spinner.fail('Request failed')
             print_error(f"Unexpected error: {str(e)}")
             return "", e
+        finally:
+            if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
 
     @staticmethod
     def custom_model(model_name: str):
@@ -497,8 +613,6 @@ class AnthropicModels:
     haiku = custom_model("claude-3-haiku-20240307")
     sonnet_3_5 = custom_model("claude-3-5-sonnet-latest")  # or claude-3-5-sonnet-20241022
     haiku_3_5 = custom_model("claude-3-5-haiku-latest") 
-
-
 
 # Following providers are not yet converted to messages array
 
@@ -841,7 +955,7 @@ class GroqModels:
                     for msg in messages:
                         print_api_request(json.dumps(msg, indent=2))
 
-                    response: ChatCompletion = client.chat.completions.create(
+                    response: GroqChatCompletion = client.chat.completions.create(
                         model=model,
                         messages=messages,
                         temperature=temperature,
@@ -864,7 +978,7 @@ class GroqModels:
                     
                     return response_text.strip(), None
 
-                except RateLimitError as e:
+                except OpenAIRateLimitError as e:
                     print_error(f"Rate limit exceeded: {e}")
                     if attempt < MAX_RETRIES - 1:
                         retry_delay = min(MAX_DELAY, BASE_DELAY * (2 ** attempt))
@@ -875,7 +989,7 @@ class GroqModels:
                     else:
                         return "", e
 
-                except APITimeoutError as e:
+                except OpenAITimeoutError as e:
                     print_error(f"API request timed out: {e}")
                     if attempt < MAX_RETRIES - 1:
                         retry_delay = min(MAX_DELAY, BASE_DELAY * (2 ** attempt))
@@ -884,7 +998,7 @@ class GroqModels:
                     else:
                         return "", e
 
-                except APIConnectionError as e:
+                except OpenAIConnectionError as e:
                     print_error(f"API connection error: {e}")
                     if attempt < MAX_RETRIES - 1:
                         retry_delay = min(MAX_DELAY, BASE_DELAY * (2 ** attempt))
@@ -893,7 +1007,7 @@ class GroqModels:
                     else:
                         return "", e
 
-                except APIError as e:
+                except OpenAIAPIError as e:
                     print_error(f"API error: {e}")
                     return "", e
 
