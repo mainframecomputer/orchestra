@@ -3,7 +3,7 @@ Mainframe Orchestra: a Python framework for building and orchestrating multi-age
 """
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-__version__ = "0.0.6"
+__version__ = "0.0.7"
 
 from .task import Task, configure_logging, LogColors, default_logger
 from .agent import Agent
@@ -50,7 +50,7 @@ def __getattr__(name):
                 importlib.import_module(package)
             
             # If successful, import and return the tool
-            module = __import__(f'mainframe-orchestra.tools.{module_name}', fromlist=[name])
+            module = __import__(f'mainframe_orchestra.tools.{module_name}', fromlist=[name])
             return getattr(module, name)
         except ImportError as e:
             missing_packages = ' '.join(required_packages)
@@ -62,31 +62,32 @@ def __getattr__(name):
         raise AttributeError(f"Module '{__name__}' has no attribute '{name}'")
 
 __all__ = [
+    # Core Classes
     'Task',
-    'configure_logging',
-    'LogColors',
-    'default_logger',
     'Agent',
-    'Config',
-    'config',
-    "Utils",
     'Conduct',
     'Compose',
     'TaskInstruction',
+    
+    # Configuration and Utilities
+    'Config',
+    'config',
+    'Utils',
+    'set_verbosity',
+    
+    # Logging
+    'configure_logging',
+    'LogColors',
+    'default_logger',
+    
+    # LLM Provider Models
     'OpenaiModels',
-    'OpenrouterModels',
     'AnthropicModels',
+    'OpenrouterModels',
     'OllamaModels',
     'GroqModels',
     'TogetheraiModels',
-    'set_verbosity'
-    "OpenaiModels",
-    "AnthropicModels",
-    "OpenrouterModels",
-    "OllamaModels",
-    "GroqModels",
-    "TogetheraiModels",
-    "set_verbosity",
+
     # List core tools
     "FileTools",
     "EmbeddingsTools",
@@ -99,6 +100,7 @@ __all__ = [
     "CalculatorTools",
     "FAISSTools",
     "PineconeTools",
+    
     # Optional tools
     "LangchainTools",
     "MatplotlibTools",
