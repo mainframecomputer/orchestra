@@ -2,7 +2,7 @@
   "subdomain": "orchestra",
   "guides": [
     {
-      "name": "Orchestra guides",
+      "name": "Orchestra",
       "sidebar": [
         {
           "path": "docs/src/home.md",
@@ -109,8 +109,8 @@
   "publishOnMerge": true,
   "siteConfig": {
     "logo": {
-      "darkMode": "https://scalar.com/logo-light.svg",
-      "lightMode": "https://scalar.com/logo-dark.svg"
+      "darkMode": "https://utfs.io/f/lKo6VaP8kaqVJPtdA2EzQjuIZeG5LtSRDsEcBb970lrfKyqF",
+      "lightMode": "https://utfs.io/f/lKo6VaP8kaqVN0l5gFv4RxZaLwSkvEXPYuo98sp0Gtm5DjTH"
     },
     "footer": ""
   }
