@@ -30,7 +30,6 @@ class LogColors:
 def parse_json_response(response: str) -> dict:
     """
     Parse a JSON response, handling potential formatting issues.
-    Now more lenient with extra text after valid JSON.
 
     Args:
         response (str): The JSON response string to parse.
@@ -54,7 +53,8 @@ def parse_json_response(response: str) -> dict:
         for match in json_matches:
             try:
                 result = json.loads(match.group(1))
-                if isinstance(result, dict) and "tool_calls" in result:
+                # Validate it's a dict and has expected structure
+                if isinstance(result, dict):
                     return result
             except json.JSONDecodeError:
                 continue
@@ -68,25 +68,41 @@ def parse_json_response(response: str) -> dict:
             raise ValueError(f"Invalid JSON structure: {e}")
 
 def serialize_result(obj: Any) -> Union[str, Dict[str, Any], List[Any]]:
-    """Convert any object into a JSON-serializable format."""
-    if obj is None:
-        return None
-    elif isinstance(obj, (str, int, float, bool)):
-        return obj
-    elif isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    elif isinstance(obj, dict):
-        return {k: serialize_result(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple, set)):
-        return [serialize_result(item) for item in obj]
-    elif hasattr(obj, 'to_dict'):  # For objects with to_dict method
-        return serialize_result(obj.to_dict())
-    elif hasattr(obj, '__dict__'):  # For generic objects
-        return serialize_result(obj.__dict__)
-    elif hasattr(obj, '_rawData'):  # For API objects that have raw data
-        return serialize_result(obj._rawData)
-    else:
-        return str(obj)
+    """Convert any object into a JSON-serializable format by aggressively stringifying non-standard types."""
+    try:
+        if obj is None:
+            return None
+        elif isinstance(obj, (str, int, float, bool)):
+            return obj
+        elif isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            try:
+                return {str(k): serialize_result(v) for k, v in obj.items()}
+            except Exception as e:
+                logger.warning(f"Failed to serialize dictionary: {e}")
+                return str(obj)
+        elif type(obj) in (list, tuple, set):  # Exact type checking for sequences
+            try:
+                return [serialize_result(item) for item in obj]
+            except Exception as e:
+                logger.warning(f"Failed to serialize sequence: {e}")
+                return str(obj)
+        elif hasattr(obj, 'to_dict'):  # Handle objects with to_dict method
+            try:
+                return serialize_result(obj.to_dict())
+            except Exception as e:
+                logger.warning(f"Failed to serialize using to_dict: {e}")
+                return str(obj)
+        else:
+            return str(obj)  # Fallback for all other types
+    except Exception as e:
+        logger.error(f"Serialization failed, using str() fallback: {e}")
+        try:
+            return str(obj)
+        except Exception as e:
+            logger.error(f"str() fallback failed: {e}")
+            return f"<Unserializable object of type {type(obj).__name__}>"
 
 def print_event(event: Dict[str, Any]) -> None:
     """Pretty print events with color coding."""
@@ -206,7 +222,7 @@ class Task(BaseModel):
         """Create and execute a task. Handles both sync and async execution."""
         
         try:
-            print("[Task.create] Starting task creation and execution")
+            #print("[Task.create] Starting task creation and execution")
             # Create new event loop if none exists
             try:
                 loop = asyncio.get_event_loop()
@@ -225,7 +241,7 @@ class Task(BaseModel):
                                        stream, initial_response, tool_summaries=tool_summaries)
             
             # Otherwise, run it synchronously
-            print("[Task.create] Running task synchronously")
+            #print("[Task.create] Running task synchronously")
             result = loop.run_until_complete(cls._create_async(
                 agent, role, goal, attributes, context, instruction,
                 llm, tools, image_data, temperature, max_tokens,
@@ -556,12 +572,12 @@ class Task(BaseModel):
             no_tools_format = """{
     "tool_calls": []
 }
-IMPORTANT: When indicating no more tools are needed, return ONLY the above JSON with no additional text or explanation. You will have another opportunity to provide your final response later."""
+IMPORTANT: When indicating no more tools are needed, return ONLY the above JSON with no additional text or explanation."""
 
             tool_call_format = tool_call_format_with_summary if self.tool_summaries else tool_call_format_basic
 
             tool_loop_prompt = f"""
-You are now determining if you need to call {more}tools to gather {more}information or perform {additional}actions to complete the given task, or if you are done using tools and are ready to proceed to the final response.
+You are now determining if you need to call {more}tools to gather {more}information or perform {additional}actions to complete the given task, or if you are done using tools and are ready to proceed to the final response. Use your tools with persistence and patience to get the best results, and retry if you get a fixable error.
 
 Now respond with a JSON object in one of these formats:
 
@@ -647,7 +663,7 @@ The original task instruction:
                             "agent_id": self.agent_id,
                             "timestamp": datetime.now().isoformat()
                         })
-                    print(f"\n{LogColors.CYAN}Tool Use: {LogColors.MAGENTA}Complete{LogColors.RESET}\n")
+                    #print(f"\n{LogColors.CYAN}Tool Use: {LogColors.MAGENTA}Complete{LogColors.RESET}\n")
                     return None, tool_results
 
                 if "tool_calls" in response_data:
@@ -834,7 +850,6 @@ The original task instruction:
 
     async def _execute_final_task(self, tool_results: List[str], callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """Execute the final task with tool results."""
-        # Add these logging statements at the start of the method
         logger = logging.getLogger("orchestra")
         logger.info("Starting final task execution")
         
@@ -842,15 +857,21 @@ The original task instruction:
         for idx, result in enumerate(tool_results):
             logger.info(f"[Tool Result {idx+1}] " + json.dumps(result, separators=(',', ':')))
 
+        # Build content based on whether we have tool results
+        content_parts = [self.instruction]
+        
+        if tool_results:
+            content_parts.extend([
+                "\nPrevious Tool Usage:",
+                ''.join(tool_results),
+                "\nYou have just completed and exited your tool-use phase, and you are now writing your final response. Do not make any more tool calls."
+            ])
+        
+        content_parts.append(f"\nNow focus on addressing the instruction:\n{self.instruction}")
+
         self.messages.append({
-            "role": "user",
-            "content": (
-                f"{self.instruction}\n\n"
-                f"Previous Tool Usage:\n"
-                f"{''.join(tool_results)}\n\n"
-                "You have just completed and exited your tool-use phase, and you are now writing your final response. Do not make any more tool calls.\n"
-                f"Now focus on addressing the instruction:\n{self.instruction}"
-            )
+            "role": "user", 
+            "content": "\n".join(content_parts)
         })
         
         try:
