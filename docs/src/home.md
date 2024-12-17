@@ -3,6 +3,8 @@
 
 Orchestra is a lightweight open-source agentic framework for creating LLM-driven task pipelines and multi-agent teams, centered around the concept of Tasks rather than conversation patterns.
 
+[Orchestra GitHub Repository](https://github.com/mainframecomputer/orchestra)
+
 ### Core Principles
 
 Orchestra is built around the concept of task completion, rather than conversation patterns. It has a modular architecture with interchangeable components. It's meant to be lightweight with minimal dependencies, and it offers transparency through a flat hierarchy and full prompt exposure.
@@ -152,3 +154,4 @@ Orchestra enables the creation of powerful multi-agent teams by assigning tasks 
 
 In a multi-agent team, each agent is designed with a specialized role, a set of tools, and specific expertise. By combining these agents, you can create AI workflows capable of handling a wide range of tasks, from research and analysis to problem-solving and code generation.
 
+**Acknowledgment**: Mainframe-Orchestra is a fork and further development of [TaskflowAI](https://github.com/philippe-page/taskflowai) by Philippe Pagé.
