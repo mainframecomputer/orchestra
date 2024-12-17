@@ -1,5 +1,12 @@
 {
+  "$schema": "https://cdn.scalar.com/schema/scalar-config.json",
   "subdomain": "orchestra",
+  "siteMeta": {
+    "favicon": "https://utfs.io/f/lKo6VaP8kaqVN0l5gFv4RxZaLwSkvEXPYuo98sp0Gtm5DjTH",
+    "title": "Orchestra",
+    "description":"Congnitive Architecture",
+    "ogImage": "https://utfs.io/f/lKo6VaP8kaqV56n5xQJhNRfrE6Qe1FKVbdY9iOas0IwUDu42"
+  },
   "guides": [
     {
       "name": "Orchestra",
@@ -118,11 +125,5 @@
     },
     "footer": ""
   },
-  "customDomain": "docs.orchestra.org",
-  "metadata": {
-    "title": "Orchestra",
-    "description": "Cognitive Architectures for Multi-Agent Systems",
-    "favicon": "docs/static/favicon.ico",
-    "ogImage": "docs/static/orchestrator.png"
-  }
+  "customDomain": "docs.orchestra.org"
 }
