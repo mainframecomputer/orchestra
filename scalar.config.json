@@ -25,7 +25,11 @@
           "type": "page"
         },
         {
-          "name": "tools",
+          "path": "docs/src/orchestration.md",
+          "type": "page"
+        },
+        {
+          "name": "Tools",
           "type": "folder",
           "children": [
             {
@@ -114,5 +118,11 @@
     },
     "footer": ""
   },
-  "customDomain": "docs.orchestra.org"
+  "customDomain": "docs.orchestra.org",
+  "metadata": {
+    "title": "Orchestra",
+    "description": "Cognitive Architectures for Multi-Agent Systems",
+    "favicon": "docs/static/favicon.ico",
+    "ogImage": "docs/static/orchestrator.png"
+  }
 }
