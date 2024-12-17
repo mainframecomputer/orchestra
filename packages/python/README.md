@@ -20,23 +20,6 @@ Mainframe-Orchestra is a lightweight, open-source agentic framework for building
 - **Streaming Support**: Real-time output streaming with both sync and async support
 - **Built-in Fallbacks**: Graceful handling of LLM failures with configurable fallback chains
 
-## Key Features 
-#### Task-centric design aligning closely with real-world operational processes
-
-#### Modular architecture for easy building, extension, and integration
-
-#### Flexible workflows allow you to design everything from deterministic pipelines to autonomous multi-agent teams
-
-#### The frameworks complexity floor starts low from simple deterministic pipelines and scales to complex multi-agent teams
-
-#### Support for hundreds of language models (OpenAI, Anthropic, OpenRouter, Groq, and local models with Ollama.)
-
-#### Comprehensive and extendable toolset for web interaction, file operations, embeddings generation, and more
-
-#### Transparency through detailed logging and state exposure
-
-#### Lightweight core with minimal dependencies
-
 ## Installation
 
 Install Orchestra using pip:
