@@ -1,6 +1,6 @@
 # Orchestra
 
-Cognitive Architectures for Multi-Agent Teams | [Documentation](https://orchestra.org)
+Cognitive Architectures for Multi-Agent Teams | [Documentation](https://docs.orchestra.org)
 
 ## Overview
 
@@ -25,4 +25,4 @@ Orchestra is released under the Apache License 2.0.
 
 ## Support
 
-For issues or questions, please file an issue on our [GitHub repository](https://github.com/mainframecomputer/orchestra/issues).
+For issues or questions, please file an issue on our [GitHub repository](https://github.com/mainframecomputer/orchestra).
