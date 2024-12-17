@@ -1,7 +1,7 @@
 
 # Introduction
 
-Orchestra is a lightweight and intuitive open-source framework for creating AI-driven task pipelines and multi-agent teams, centered around the concept of Tasks rather than conversation patterns.
+Orchestra is a lightweight open-source agentic framework for creating LLM-driven task pipelines and multi-agent teams, centered around the concept of Tasks rather than conversation patterns.
 
 ### Core Principles
 
@@ -41,11 +41,11 @@ source venv/bin/activate  # On Windows use: venv\Scripts\activate
 pip install mainframe-orchestra
 ```
 
-Once you have installed Orchestra, you can start building your task flows.
+Once you have installed Orchestra, you can start building your agentic workflows and multi-agent teams.
 
 ```python
 # Single Agent example
-from Orchestra import Task, Agent, WebTools, OpenRouterModels
+from mainframe_orchestra import Task, Agent, WebTools, OpenRouterModels
 
 researcher = Agent(
     role="research assistant",
@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
 ```python
 # Multi Agent example
-from Orchestra import Agent, Task, WebTools, WikipediaTools, AmadeusTools, OpenrouterModels, set_verbosity
+from mainframe_orchestra import Agent, Task, WebTools, WikipediaTools, AmadeusTools, OpenrouterModels, set_verbosity
 from datetime import datetime
 
 set_verbosity(1)

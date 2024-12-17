@@ -111,7 +111,7 @@ Task decomposition is a crucial strategy in Orchestra for efficiently managing c
 
 Once the problem is dissected, individual subtasks are created as discrete units of work contributing to the overall solution. Each subtask should have a focused purpose. This granularity allows for better resource allocation. After defining subtasks, it's crucial to identify and map out input and output flows between them, helping organize the workflow and determine the ideal execution sequence.
 
-Task decomposition not only makes complex problems more manageable but also enhances the flexibility and maintainability of AI workflows. It facilitates easier debugging, as issues can be isolated to specific subtasks. By mastering task decomposition, you can significantly improve the effectiveness and scalability of your Orchestra implementations, creating more robust and effective task flows.
+Task decomposition not only makes complex problems more manageable but also enhances the flexibility and maintainability of AI workflows. It facilitates easier debugging, as issues can be isolated to specific subtasks. By mastering task decomposition, you can significantly improve the effectiveness and scalability of your Orchestra implementations, creating more robust and effective agentic systems.
 
 ### Managing Context Window Attention
 

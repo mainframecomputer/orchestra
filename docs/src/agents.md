@@ -121,6 +121,6 @@ Prompting involves crafting effective prompts for agent roles, goals, and attrib
 - Experiment with different prompt variations and evaluate their impact on agent performance.
 - Use the attributes field to provide additional behavioral cues and suggestions based on feedback from tests".
 
-Testing and iterative development is key to creating effective prompts. The feedback from the initial runs will be used to refine the prompts and improve the performance of the agents. It's worth testing and adjusting early in the process as you develop out your multi-agent team or task flows.
+Testing and iterative development is key to creating effective prompts. The feedback from the initial runs will be used to refine the prompts and improve the performance of the agents. It's worth testing and adjusting early in the process as you develop out your multi-agent team or workflows.
 
 By incorporating these advanced techniques, you can create agents that can handle complex tasks, adapt to user preferences, and provide more personalized and context-aware responses.
