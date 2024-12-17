@@ -22,7 +22,3 @@ Orchestra depends on and welcomes community contributions! Please submit a pull 
 ## License
 
 Orchestra is released under the Apache License 2.0.
-
-## Support
-
-For issues or questions, please file an issue on our [GitHub repository](https://github.com/mainframecomputer/orchestra).
