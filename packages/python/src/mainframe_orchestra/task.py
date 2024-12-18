@@ -710,7 +710,11 @@ The original task instruction:
                             logger.debug(f"Tool call count for this configuration: {call_count}")
 
                             if call_count > MAX_IDENTICAL_CALLS:
-                                warning_msg = f"Tool call repeated too many times: {tool_call.get('tool')} with params {tool_call.get('params')}"
+                                warning_msg = (
+                                    f"Exiting tool loop due to verbatim repetition (suggesting infinite loop). "
+                                    f"Tool '{tool_call.get('tool')}' with parameters {tool_call.get('params')} "
+                                    f"has been called {call_count} times. Maximum allowed repetitions is {MAX_IDENTICAL_CALLS}."
+                                )
                                 logger.warning(f"{LogColors.YELLOW}{warning_msg}{LogColors.RESET}")
                                 if callback:
                                     await callback({"type": "warning", "content": warning_msg})
