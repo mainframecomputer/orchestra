@@ -187,9 +187,9 @@ class Conduct:
                 )
 
             conduct_tool.__name__ = "conduct_tool"
-            conduct_tool.__doc__ = f"""Tool function to orchestrate multiple agents in a sequential task flow with data passing.
+            conduct_tool.__doc__ = f"""Tool function to orchestrate multiple agents in a single, coordinated multi-agent flow. Tasks should be submitted in a single list, and they will be executed in the order they are submitted. Do not make separate calls to the tool.
             Consider the flow of information through the tasks when writing your orchestration: **if the final task depends on the output of an earlier task, you must include the task_id of the task it depends on in the "use_output_from" field**.
-            Your team members can complete tasks iteratively, Agents can handle multiple similar tasks in one instruction.
+            Your team members can handle multiple similar tasks in one instruction.
             For example, if you want a travel agent to find flights and a spreadsheet agent to create a spreadsheet with the flight options, you *MUST* include the task_id of the travel related task in the "use_output_from" field of the spreadsheet agent's task.
             Your instruction should be an extensive and well engineered prompt instruction for the agent. Don't just issue a simple instruction string; tell it what to do and achieve, and what its final response should be.
 
@@ -217,9 +217,7 @@ class Conduct:
                     ]
 
             Returns:
-                dict: A dictionary with keys "results" and "tool_calls".
-                    "results" is a dictionary of results keyed by task_id.
-                    "tool_calls" is a list of tool calls made during the task flow.
+                str: A formatted string containing the results of all tasks, with each task's instruction and result clearly labeled.
             """
             return conduct_tool
 
