@@ -178,7 +178,7 @@ By combining agents, tasks, tools, and language models, you can create a wide ra
 
 ## Documentation
 
-For more detailed information, tutorials, and advanced usage, visit our [documentation](https://orchestra.org).
+For more detailed information, tutorials, and advanced usage, visit our [documentation](https://docs.orchestra.org).
 
 ## Contributing
 
@@ -188,9 +188,12 @@ Mainframe-Orchestra depends on and welcomes community contributions! Please revi
 
 Mainframe-Orchestra is released under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
 
+## Acknowledgments
+Orchestra is a fork and further development of [TaskflowAI](https://github.com/philippe-page/taskflowai).
+
 ## Support
 
-For issues or questions, please file an issue on our [GitHub repository](https://github.com/mainframecomputer/orchestra/issues).
+For issues or questions, please file an issue on our [GitHub repository issues page](https://github.com/mainframecomputer/orchestra/issues).
 
 ⭐️ If you find Mainframe-Orchestra helpful, consider giving it a star!
 

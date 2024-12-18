@@ -187,9 +187,9 @@ class Conduct:
                 )
 
             conduct_tool.__name__ = "conduct_tool"
-            conduct_tool.__doc__ = f"""Tool function to orchestrate multiple agents in a sequential task flow with data passing.
+            conduct_tool.__doc__ = f"""Tool function to orchestrate multiple agents in a single, coordinated multi-agent flow. Tasks should be submitted in a single list, and they will be executed in the order they are submitted. Do not make separate calls to the tool.
             Consider the flow of information through the tasks when writing your orchestration: **if the final task depends on the output of an earlier task, you must include the task_id of the task it depends on in the "use_output_from" field**.
-            Your team members can complete tasks iteratively, Agents can handle multiple similar tasks in one instruction.
+            Your team members can handle multiple similar tasks in one instruction.
             For example, if you want a travel agent to find flights and a spreadsheet agent to create a spreadsheet with the flight options, you *MUST* include the task_id of the travel related task in the "use_output_from" field of the spreadsheet agent's task.
             Your instruction should be an extensive and well engineered prompt instruction for the agent. Don't just issue a simple instruction string; tell it what to do and achieve, and what its final response should be.
 
@@ -217,9 +217,7 @@ class Conduct:
                     ]
 
             Returns:
-                dict: A dictionary with keys "results" and "tool_calls".
-                    "results" is a dictionary of results keyed by task_id.
-                    "tool_calls" is a list of tool calls made during the task flow.
+                str: A formatted string containing the results of all tasks, with each task's instruction and result clearly labeled.
             """
             return conduct_tool
 
@@ -247,10 +245,10 @@ class Compose:
                     agent_id="composer",
                     role="Composer",
                     goal="To create structured, efficient plans for multi-agent task execution",
-                    attributes="""You are a thoughtful composer who excels at planning and structuring complex tasks. Like a musical composer, you understand how different elements must come together harmoniously to create a complete work. You carefully consider the capabilities of each agent as if they were instruments in your orchestra, knowing when to leverage their individual strengths and how to combine them effectively.
-You approach planning with both precision and creativity, ensuring each task flows naturally into the next while maintaining clear dependencies and relationships. Your plans account for the flow of information between tasks, much like themes that weave through a musical composition.
+                    attributes="""You are a thoughtful composer who excels at planning and structuring complex tasks. Like a musical composer, you understand how different elements must come together harmoniously to create a complete work. You carefully consider the capabilities of each agent as if they were musicians in your orchestra, knowing when to leverage their individual strengths and how to combine them effectively.
+You approach planning with both precision and creativity, ensuring each task flows naturally into the next while maintaining clear dependencies and relationships. Your plans account for the flow of information between tasks.
 You create plans that are both comprehensive and elegant, with a natural rhythm and flow to their execution. You consider not just what needs to be done, but how it should be orchestrated for maximum efficiency and effectiveness. Each plan you create includes clear task breakdowns, thoughtful agent assignments, explicit dependencies, and well-defined success criteria. You express these elements in clear, narrative form that guides the execution while maintaining flexibility for dynamic adjustments as needed.
-Your responses take the form of well-structured plans that read like a score, guiding each agent through their part while maintaining the coherence of the whole. You balance detail with clarity, ensuring your plans are thorough without becoming overwhelming. You maintain awareness of the overall goal while carefully considering each component, much like a composer balancing individual instruments within the larger orchestral work.""",
+Your responses take the form of well-structured plans that read like a score, guiding each agent through their part while maintaining the coherence of the whole. You balance detail with clarity, ensuring your plans are thorough without becoming overwhelming. You maintain awareness of the overall goal while carefully considering each component.""",
                     llm=next(iter(agents)).llm
                 )
                 
