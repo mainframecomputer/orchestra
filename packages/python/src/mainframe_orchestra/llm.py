@@ -401,13 +401,6 @@ class AnthropicModels:
         """
         Sends an asynchronous request to an Anthropic model using the Messages API format.
         """
-                # Add warning if JSON output is requested
-        if require_json_output:
-            print_conditional_color(
-                "\n[WARNING] JSON output requirement is not directly supported by Anthropic models. "
-                "Proceeding with standard output.",
-                'yellow'
-            )
         spinner = Halo(text='Sending request to Anthropic...', spinner='dots')
         spinner.start()
         
