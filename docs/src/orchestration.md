@@ -98,11 +98,11 @@ coordinator = Agent(
     role="Coordinator",
     goal="To chat with and help the human user by coordinating your team of agents to carry out tasks",
     attributes="You know that you can delegate tasks to your team of agents, and you can take outputs of agents and use them for subsequent tasks if needed. Your team includes a Browser Agent, a GitHub Agent, an Email Agent, and others.",
-    tools=Conduct.conduct_tool(
+    tools=[Conduct.conduct_tool(
         browser_agent,
         github_agent,
         # Additional agents...
-    ),
+    )],
     llm=default_coordinator_llm
 )
 ```
