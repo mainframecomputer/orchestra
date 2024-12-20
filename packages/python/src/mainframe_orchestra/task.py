@@ -40,13 +40,20 @@ def parse_json_response(response: str) -> dict:
     Raises:
         ValueError: If the JSON cannot be parsed after multiple attempts.
     """
+    # Clean any markdown code blocks
+    if response.startswith('```') and response.endswith('```'):
+        # Split by newlines and remove first and last lines (```language and ```)
+        lines = response.split('\n')
+        if len(lines) > 2:
+            response = '\n'.join(lines[1:-1])
+    
     try:
-        # First attempt: Try to parse the entire response
+        # Try to parse the entire response
         return json.loads(response)
     except json.JSONDecodeError as e:
         logger.debug(f"Initial JSON parse failed: {e}")
         
-        # Second attempt: Find the first complete JSON object
+        # Find the first complete JSON object
         json_pattern = r'(\{(?:[^{}]|(?:\{[^{}]*\}))*\})'
         json_matches = re.finditer(json_pattern, response, re.DOTALL)
         
@@ -59,13 +66,20 @@ def parse_json_response(response: str) -> dict:
             except json.JSONDecodeError:
                 continue
         
-        # Third attempt: Try to cleave strings before and after JSON
+        # Cleave strings before and after JSON
         cleaved_json = response.strip().lstrip('`').rstrip('`')
         try:
             return json.loads(cleaved_json)
         except json.JSONDecodeError as e:
-            logger.error(f"All JSON parsing attempts failed: {e}")
-            raise ValueError(f"Invalid JSON structure: {e}")
+            # Try removing any comments before parsing
+            try:
+                # Remove both single-line and multi-line comments
+                comment_pattern = r'//.*?(?:\n|$)|/\*.*?\*/'
+                cleaned_json = re.sub(comment_pattern, '', cleaved_json, flags=re.DOTALL)
+                return json.loads(cleaned_json)
+            except json.JSONDecodeError as e:
+                logger.error(f"All JSON parsing attempts failed: {e}")
+                raise ValueError(f"Invalid JSON structure: {e}")
 
 def serialize_result(obj: Any) -> Union[str, Dict[str, Any], List[Any]]:
     """Convert any object into a JSON-serializable format by aggressively stringifying non-standard types."""
@@ -577,7 +591,7 @@ IMPORTANT: When indicating no more tools are needed, return ONLY the above JSON 
             tool_loop_prompt = f"""
 You are now determining if you need to call {more}tools to gather {more}information or perform {additional}actions to complete the given task, or if you are done using tools and are ready to proceed to the final response. Use your tools with persistence and patience to get the best results, and retry if you get a fixable error.
 
-If you need to make tool calls, consider whether to make them successively or all at once. If the result of one tool call is required as input for another tool, make your calls one at a time. If multiple tool calls can be made independently, you may request them all at once. Now respond with a JSON object that either requests tool calls or exits the tool loop. Return only valid JSON without any additional comments.
+If you need to make tool calls, consider whether to make them successively or all at once. If the result of one tool call is required as input for another tool, make your calls one at a time. If multiple tool calls can be made independently, you may request them all at once.
 
 Now respond with a JSON object in one of these formats:
 
@@ -586,6 +600,8 @@ If tool calls are still needed:
 
 If no more tool calls are required:
 {no_tools_format}
+
+Now respond with a JSON object that either requests tool calls or exits the tool loop. Do not comment before or after the JSON, and do not include any backticks or language declarations. Return only a valid JSON in any case.
 """
 
             while iteration_count < MAX_ITERATIONS:
@@ -644,26 +660,74 @@ The original task instruction:
 
                 try:
                     response_data = parse_json_response(response)
-                except json.JSONDecodeError as e:
-                    logger.error(f"JSON decode error: {e}")
-                    if callback:
-                        await callback({"type": "error", "content": f"Invalid JSON response: {e}"})
-                    return e, []
+                    
+                    # Validate basic response structure
+                    if not isinstance(response_data, dict):
+                        raise ValueError("Response must be a JSON object")
+                    
+                    if "tool_calls" not in response_data:
+                        raise ValueError("Response must contain 'tool_calls' key")
+                        
+                    if not isinstance(response_data["tool_calls"], list):
+                        raise ValueError("'tool_calls' must be an array")
+                    
+                    # Handle explicit completion
+                    if len(response_data["tool_calls"]) == 0:
+                        logger.info("Received explicit completion signal (empty tool_calls)")
+                        if callback:
+                            await callback({
+                                "type": "end_tool_use",
+                                "content": "Tool usage complete",
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                        return None, tool_results
+                    
+                    # Validate each tool call before proceeding
+                    tools_dict = {func.__name__: func for func in self.tools}
+                    for tool_call in response_data["tool_calls"]:
+                        if not isinstance(tool_call, dict):
+                            raise ValueError("Each tool call must be an object")
+                            
+                        if "tool" not in tool_call:
+                            raise ValueError("Each tool call must specify a 'tool' name")
+                            
+                        if "params" not in tool_call:
+                            raise ValueError("Each tool call must include 'params'")
+                            
+                        if not isinstance(tool_call["params"], dict):
+                            raise ValueError("Tool 'params' must be an object")
+                            
+                        tool_name = tool_call.get("tool")
+                        if tool_name not in tools_dict and tool_name != "conduct_tool":
+                            raise ValueError(f"Unknown tool: {tool_name}. Available tools: {', '.join(tools_dict.keys())}")
 
-                # Simplified check for end of tool usage
-                if "tool_calls" in response_data and len(response_data["tool_calls"]) == 0:
-                    logger.info("Received empty tool calls array - ending tool usage")
+                except (json.JSONDecodeError, ValueError) as e:
+                    error_msg = f"Invalid tool response: {str(e)}"
+                    logger.error(f"{LogColors.RED}[TOOL_LOOP] {error_msg}{LogColors.RESET}")
+                    logger.error(f"Problematic response: {response[:200]}...")  # Log truncated response
+                    
                     if callback:
                         await callback({
-                            "type": "end_tool_use",
-                            "content": "Tool usage complete",
-                            "agent_id": self.agent_id,
-                            "timestamp": datetime.now().isoformat()
+                            "type": "error",
+                            "content": error_msg,
+                            "response": response[:1000],  # Truncate very long responses
+                            "iteration": iteration_count
                         })
-                    return None, tool_results
+                    
+                    # Add error to tool results for context in next iteration
+                    tool_results.append(
+                        f"\nTool Response Error:\n"
+                        f"Iteration: {iteration_count}\n"
+                        f"Error: {error_msg}\n"
+                        f"Response: {response[:200]}..."  # Truncate long responses
+                    )
+                    
+                    # Continue to next iteration
+                    continue
 
+                # If we get here, all tool calls are valid - proceed with execution
                 if "tool_calls" in response_data:
-
                     # Check initial_response flag BEFORE executing any tools
                     if self.initial_response and iteration_count <= 1:
                         logger.info("[TOOL_LOOP] Preparing initial response before executing tools")
@@ -875,7 +939,7 @@ The original task instruction:
             logger.info(f"[Tool Result {idx+1}] " + json.dumps(result, separators=(',', ':')))
 
         # Build content based on whether we have tool results
-        content_parts = [self.instruction]
+        content_parts = []
         
         if tool_results:
             content_parts.extend([
@@ -884,7 +948,7 @@ The original task instruction:
                 "\nYou have just completed and exited your tool-use phase, and you are now writing your final response. Do not make any more tool calls."
             ])
         
-        content_parts.append(f"\nNow focus on addressing the instruction:\n{self.instruction}")
+        content_parts.append(f"Now focus on addressing the instruction:\n{self.instruction}")
 
         self.messages.append({
             "role": "user", 
