@@ -1,6 +1,6 @@
 # FAQ
 
-This FAQ page addresses common questions about setting up and using Mainframe-Orchestra. If you have additional questions, please feel free to open an issue on our GitHub repository.
+This FAQ page addresses common questions about setting up and using Mainframe-Orchestra. If you have additional questions, please feel free to open an issue on [our GitHub repository](https://github.com/mainframecomputer/orchestra).
 
 ### Setting Up Agents and Tasks
 
@@ -105,7 +105,7 @@ All requests will stay internal to your device in this configuration, ensuring p
 
 ##### Are you adding more tools? Are you open to requests?
 
-Yes, we are open to adding new features and toolkits as needed. If you have a request for a new tool or feature, please open an issue on our GitHub repository or contribute directly to the project.
+Yes, we are open to adding new features and toolkits as needed. If you have a request for a new tool or feature, please open an issue on [our GitHub repository](https://github.com/mainframecomputer/orchestra) or contribute directly to the project.
 
 ### Additional Questions
 
