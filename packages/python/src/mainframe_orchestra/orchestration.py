@@ -294,7 +294,7 @@ Your responses take the form of well-structured plans that read like a score, gu
                             f"You are {composer_agent.role}. "
                             f"Your goal is {composer_agent.goal}"
                             f"{' Your attributes are: ' + composer_agent.attributes if composer_agent.attributes and composer_agent.attributes.strip() else ''}"
-                        ),
+                        ).strip(),
                     },
                     {
                         "role": "user",
