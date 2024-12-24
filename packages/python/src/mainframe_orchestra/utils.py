@@ -5,8 +5,9 @@ import base64
 import re
 import json
 from typing import Union
-class Utils:
 
+
+class Utils:
     @staticmethod
     def update_conversation_history(history, role, content):
         """
@@ -24,7 +25,6 @@ class Utils:
         formatted_message = f"[{timestamp}] {role}: {content}"
         history.append(formatted_message)
         return history
-
 
     @staticmethod
     def image_to_base64(image_path: str, scale_factor: float = 0.5) -> str:
@@ -47,11 +47,10 @@ class Utils:
         with open(image_path, "rb") as image_file:
             img = np.frombuffer(image_file.read(), dtype=np.uint8)
             img = img.reshape((-1, 3))  # Assuming 3 channels (RGB)
-            resized_img = img[::int(1/scale_factor)]
+            resized_img = img[:: int(1 / scale_factor)]
             buffer = BytesIO()
             np.save(buffer, resized_img, allow_pickle=False)
             return base64.b64encode(buffer.getvalue()).decode("utf-8")
-
 
     @staticmethod
     def parse_json_response(response: Union[str, dict]) -> dict:
@@ -69,12 +68,12 @@ class Utils:
         """
         if isinstance(response, dict):
             return response
-        
+
         if isinstance(response, str):
             try:
                 return json.loads(response)
             except json.JSONDecodeError:
-                json_match = re.search(r'\{.*?\}', response, re.DOTALL)
+                json_match = re.search(r"\{.*?\}", response, re.DOTALL)
                 if json_match:
                     json_str = json_match.group(0)
                     try:
@@ -83,5 +82,5 @@ class Utils:
                         raise ValueError(f"Failed to parse JSON from response: {response}")
                 else:
                     raise ValueError(f"No JSON object found in response: {response}")
-        
+
         raise ValueError(f"Unexpected response type: {type(response)}")

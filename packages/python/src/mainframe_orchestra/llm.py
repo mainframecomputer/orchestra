@@ -793,7 +793,7 @@ class OllamaModels:
         """
         print_model_request("Ollama", model)
         if debug:
-            print_debug(f"Entering call_ollama function")
+            print_debug("Entering call_ollama function")
             print_debug(
                 f"Parameters: model={model}, messages={messages}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
             )
@@ -937,7 +937,7 @@ class GroqModels:
     ) -> Tuple[str, Optional[Exception]]:
         print_model_request("Groq", model)
         if debug:
-            print_debug(f"Entering call_groq function")
+            print_debug("Entering call_groq function")
             print_debug(
                 f"Parameters: system_prompt={system_prompt}, user_prompt={user_prompt}, model={model}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
             )
@@ -968,7 +968,7 @@ class GroqModels:
 
                     print_debug(f"API Key: {api_key[:5]}...{api_key[-5:]}")
                     client = Groq(api_key=api_key)
-                    print_debug(f"Groq client initialized")
+                    print_debug("Groq client initialized")
 
                     messages = [
                         {"role": "system", "content": system_prompt},
@@ -1003,7 +1003,7 @@ class GroqModels:
                         response_format={"type": "json_object"} if require_json_output else None,
                     )
 
-                    print_debug(f"API response received")
+                    print_debug("API response received")
 
                     response_text = response.choices[0].message.content
                     print_debug(f"Processed response text (truncated): {response_text[:100]}...")
@@ -1328,7 +1328,7 @@ class TogetheraiModels:
 
         print_model_request("Together AI", model)
         if debug:
-            print_debug(f"Entering call_together function")
+            print_debug("Entering call_together function")
             print_debug(
                 f"Parameters: system_prompt={system_prompt}, user_prompt={user_prompt}, model={model}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
             )
@@ -1359,7 +1359,7 @@ class TogetheraiModels:
 
                     print_debug(f"API Key: {api_key[:5]}...{api_key[-5:]}")
                     client = OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
-                    print_debug(f"Together client initialized via OpenAI")
+                    print_debug("Together client initialized via OpenAI")
 
                     messages = [
                         {"role": "system", "content": system_prompt},
@@ -1405,7 +1405,7 @@ class TogetheraiModels:
                         response_format={"type": "json_object"} if use_json else None,
                     )
 
-                    print_debug(f"API response received")
+                    print_debug("API response received")
                     response_text = response.choices[0].message.content
                     print_debug(f"Processed response text (truncated): {response_text[:100]}...")
 
