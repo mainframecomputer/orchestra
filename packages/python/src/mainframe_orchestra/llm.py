@@ -797,14 +797,15 @@ class OpenrouterModels:
 
 class OllamaModels:
     @staticmethod
-    def call_ollama(
+    async def call_ollama(
         model: str,
         messages: Optional[List[Dict[str, str]]] = None,
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
+        stream: bool = False,  # Add stream parameter
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:  # Update return type
         """
         Updated to handle messages array format compatible with Task class.
         """
@@ -816,16 +817,7 @@ class OllamaModels:
             )
 
         spinner = Halo(text="Sending request to Ollama...", spinner="dots")
-        stop_spinner = threading.Event()
-
-        def spin():
-            spinner.start()
-            while not stop_spinner.is_set():
-                time.sleep(0.1)
-            spinner.stop()
-
-        spinner_thread = threading.Thread(target=spin)
-        spinner_thread.start()
+        spinner.start()
 
         try:
             # Process messages into Ollama format
@@ -860,6 +852,33 @@ class OllamaModels:
                     print_conditional_color(f"\n[LLM] Ollama ({model}) Request Messages:", "cyan")
                     for msg in messages:
                         print_api_request(json.dumps(msg, indent=2))
+
+                    if stream:
+                        spinner.stop()  # Stop spinner before streaming
+                        async def stream_generator():
+                            try:
+                                response = client.chat(
+                                    model=model,
+                                    messages=messages,
+                                    format="json" if require_json_output else None,
+                                    options={"temperature": temperature, "num_predict": max_tokens},
+                                    stream=True,
+                                )
+                                
+                                for chunk in response:
+                                    if chunk and "message" in chunk and "content" in chunk["message"]:
+                                        content = chunk["message"]["content"]
+                                        if debug:
+                                            print_debug(f"Streaming chunk: {content}")
+                                        yield content
+                                print("")  
+                            except Exception as e:
+                                print_error(f"Streaming error: {str(e)}")
+                                yield ""
+
+                        return stream_generator()
+
+                    # Non-streaming logic
                     response = client.chat(
                         model=model,
                         messages=messages,
@@ -909,13 +928,8 @@ class OllamaModels:
                     return "", e
 
         finally:
-            stop_spinner.set()
-            spinner_thread.join()
-            if "response_text" in locals() and response_text:
-                spinner.succeed("Request completed")
-                print_api_response(response_text.strip())
-            else:
-                spinner.fail("Request failed")
+            if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
 
         return "", Exception("Max retries reached")
 
@@ -927,15 +941,16 @@ class OllamaModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            stream: bool = False,  # Added for compatibility though not used
-        ) -> Tuple[str, Optional[Exception]]:
-            return OllamaModels.call_ollama(
+            stream: bool = False,  # Add stream parameter
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:  # Update return type
+            return await OllamaModels.call_ollama(
                 model=model_name,
                 messages=messages,
                 image_data=image_data,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 require_json_output=require_json_output,
+                stream=stream,  # Pass stream parameter
             )
 
         return wrapper
