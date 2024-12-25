@@ -148,12 +148,10 @@ def parse_json_response(response: str) -> dict:
     Raises:
         ValueError: If the JSON cannot be parsed after multiple attempts.
     """
+    # First attempt: Try to parse the entire response
     try:
-        # First attempt: Try to parse the entire response
         return json.loads(response)
-    except json.JSONDecodeError as e:
-        print_color(f"Initial JSON parse failed: {e}", "yellow")
-
+    except json.JSONDecodeError:
         # Second attempt: Find the first complete JSON object
         json_pattern = r"(\{(?:[^{}]|(?:\{[^{}]*\}))*\})"
         json_matches = re.finditer(json_pattern, response, re.DOTALL)
@@ -172,9 +170,8 @@ def parse_json_response(response: str) -> dict:
         try:
             return json.loads(cleaved_json)
         except json.JSONDecodeError as e:
-            print_error(f"All JSON parsing attempts failed: {e}")
+            print_color(f"All JSON parsing attempts failed: {e}", "yellow")
             raise ValueError(f"Invalid JSON structure: {e}")
-
 
 class OpenaiModels:
     """
@@ -1073,165 +1070,136 @@ class GroqModels:
 
 class TogetheraiModels:
     @staticmethod
-    def call_together(
-        system_prompt: str,
-        user_prompt: str,
-        model: str,
+    async def send_together_request(
+        model: str = "",
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        JSON_SUPPORTED_MODELS = {
-            "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-            "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
-            "mistralai/Mixtral-8x7B-Instruct-v0.1",
-            "mistralai/Mistral-7B-Instruct-v0.1",
-        }
-
-        # Determine if we should use JSON mode
-        use_json = require_json_output and model in JSON_SUPPORTED_MODELS
-
-        if require_json_output and model not in JSON_SUPPORTED_MODELS:
-            print(
-                f"JSON output requested but not supported for model {model}. Falling back to standard output."
-            )
-
-        print_model_request("Together AI", model)
-        if debug:
-            print_debug("Entering call_together function")
-            print_debug(
-                f"Parameters: system_prompt={system_prompt}, user_prompt={user_prompt}, model={model}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
-            )
-
-        print_api_request(f"{system_prompt}\n{user_prompt}")
-        if image_data:
-            print_api_request("Images: Included")
-
+        messages: Optional[List[Dict[str, str]]] = None,
+        stream: bool = False,
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+        """
+        Sends a request to Together AI using the messages API format.
+        """
         spinner = Halo(text="Sending request to Together AI...", spinner="dots")
-        stop_spinner = threading.Event()
-
-        def spin():
-            spinner.start()
-            while not stop_spinner.is_set():
-                time.sleep(0.1)
-            spinner.stop()
-
-        spinner_thread = threading.Thread(target=spin)
-        spinner_thread.start()
+        spinner.start()
 
         try:
-            for attempt in range(MAX_RETRIES):
-                print_debug(f"Attempt {attempt + 1}/{MAX_RETRIES}")
-                try:
-                    api_key = config.TOGETHERAI_API_KEY
-                    if not api_key:
-                        return "", ValueError("TOGETHERAI_API_KEY environment variable is not set")
+            api_key = config.validate_api_key("TOGETHERAI_API_KEY")
+            client = OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
 
-                    print_debug(f"API Key: {api_key[:5]}...{api_key[-5:]}")
-                    client = OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
-                    print_debug("Together client initialized via OpenAI")
+            # Process messages and images
+            if messages:
+                print_conditional_color(f"\n[LLM] TogetherAI ({model}) Request Messages:", "cyan")
+                for msg in messages:
+                    print_api_request(json.dumps(msg, indent=2))
 
-                    messages = [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": []},
-                    ]
-
-                    if image_data:
-                        print_debug("Processing image data")
+                # Handle image data if present
+                if image_data:
+                    last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
+                    if last_user_msg:
+                        content = []
                         if isinstance(image_data, str):
                             image_data = [image_data]
-
+                        
                         for i, image in enumerate(image_data, start=1):
-                            messages[1]["content"].append({"type": "text", "text": f"Image {i}:"})
+                            content.append({"type": "text", "text": f"Image {i}:"})
                             if image.startswith(("http://", "https://")):
-                                print_debug(f"Image {i} is a URL")
-                                messages[1]["content"].append(
-                                    {"type": "image_url", "image_url": {"url": image}}
-                                )
+                                content.append({
+                                    "type": "image_url",
+                                    "image_url": {"url": image}
+                                })
                             else:
-                                print_debug(f"Image {i} is base64")
-                                messages[1]["content"].append(
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                                    }
-                                )
+                                content.append({
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/jpeg;base64,{image}"}
+                                })
+                        
+                        # Add original text content
+                        content.append({"type": "text", "text": last_user_msg["content"]})
+                        last_user_msg["content"] = content
 
-                        messages[1]["content"].append({"type": "text", "text": user_prompt})
-                    else:
-                        messages[1]["content"] = user_prompt
+            if stream:
+                spinner.stop()  # Stop spinner before streaming
 
-                    print_conditional_color(
-                        f"\n[LLM] TogetherAI ({model}) Request Messages:", "cyan"
-                    )
-                    for msg in messages:
-                        print_api_request(json.dumps(msg, indent=2))
+                async def stream_generator():
+                    try:
+                        response = client.chat.completions.create(
+                            model=model,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            response_format={"type": "json_object"} if require_json_output else None,
+                            stream=True
+                        )
+                        
+                        for chunk in response:
+                            if chunk.choices[0].delta.content:
+                                content = chunk.choices[0].delta.content
+                                if debug:
+                                    print_debug(f"Streaming chunk: {content}")
+                                yield content
+                        yield "\n" 
+                    except Exception as e:
+                        print_error(f"An error occurred during streaming: {e}")
+                        yield ""
+                        yield "\n" 
 
-                    response = client.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        response_format={"type": "json_object"} if use_json else None,
-                    )
+                return stream_generator()
 
-                    print_debug("API response received")
-                    response_text = response.choices[0].message.content
-                    print_debug(f"Processed response text (truncated): {response_text[:100]}...")
+            # Non-streaming logic
+            spinner.text = f"Waiting for {model} response..."
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"} if require_json_output else None,
+            )
 
-                    if require_json_output:
-                        try:
-                            parsed = json.loads(response_text)
-                            yield json.dumps(parsed)
-                        except ValueError as ve:
-                            print_error(f"Failed to parse Gemini response as JSON: {ve}")
-                            yield ""
-                    else:
-                        yield response_text
+            content = response.choices[0].message.content
+            spinner.succeed("Request completed")
 
-                except Exception as e:
-                    print_error(f"An error occurred: {e}")
-                    print_debug(f"Error details: {type(e).__name__}, {e}")
-                    if attempt < MAX_RETRIES - 1:
-                        retry_delay = min(MAX_DELAY, BASE_DELAY * (2**attempt))
-                        jitter = random.uniform(0, 0.1 * retry_delay)
-                        total_delay = retry_delay + jitter
-                        print_api_request(f"Retrying in {total_delay:.2f} seconds...")
-                        time.sleep(total_delay)
-                    else:
-                        return "", e
+            if verbosity:
+                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
+                print_api_response(content.strip())
 
-            print_debug("Max retries reached")
-            return "", Exception("Max retries reached")
+            if require_json_output:
+                try:
+                    json_response = parse_json_response(content)
+                    return json.dumps(json_response), None
+                except ValueError as e:
+                    return "", e
+            
+            return content.strip(), None
 
+        except Exception as e:
+            spinner.fail("Request failed")
+            print_error(f"Unexpected error: {str(e)}")
+            return "", e
         finally:
-            stop_spinner.set()
-            spinner_thread.join()
-            if "response_text" in locals() and response_text:
-                spinner.succeed("Request completed")
-                print_api_response(response_text.strip())
-            else:
-                spinner.fail("Request failed")
+            if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
 
     @staticmethod
     def custom_model(model_name: str):
-        def wrapper(
-            system_prompt: str = "",
-            user_prompt: str = "",
+        async def wrapper(
             image_data: Union[List[str], str, None] = None,
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-        ) -> Tuple[str, Optional[Exception]]:
-            return TogetheraiModels.call_together(
-                system_prompt,
-                user_prompt,
-                model_name,
-                image_data,
-                temperature,
-                max_tokens,
-                require_json_output,
+            messages: Optional[List[Dict[str, str]]] = None,
+            stream: bool = False,
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+            return await TogetheraiModels.send_together_request(
+                model=model_name,
+                image_data=image_data,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                require_json_output=require_json_output,
+                messages=messages,
+                stream=stream,
             )
 
         return wrapper
