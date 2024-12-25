@@ -943,378 +943,117 @@ class OllamaModels:
 
 class GroqModels:
     @staticmethod
-    def call_groq(
-        system_prompt: str,
-        user_prompt: str,
-        model: str,
+    async def send_groq_request(
+        model: str = "",
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        print_model_request("Groq", model)
-        if debug:
-            print_debug("Entering call_groq function")
-            print_debug(
-                f"Parameters: system_prompt={system_prompt}, user_prompt={user_prompt}, model={model}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
-            )
-
-        print_api_request(f"{system_prompt}\n{user_prompt}")
-        if image_data:
-            print_api_request("Images: Included")
-
+        messages: Optional[List[Dict[str, str]]] = None,
+        stream: bool = False,
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+        """
+        Sends a request to Groq using the messages API format.
+        """
         spinner = Halo(text="Sending request to Groq...", spinner="dots")
-        stop_spinner = threading.Event()
-
-        def spin():
-            spinner.start()
-            while not stop_spinner.is_set():
-                time.sleep(0.1)
-            spinner.stop()
-
-        spinner_thread = threading.Thread(target=spin)
-        spinner_thread.start()
+        spinner.start()
 
         try:
-            for attempt in range(MAX_RETRIES):
-                print_debug(f"Attempt {attempt + 1}/{MAX_RETRIES}")
-                try:
-                    api_key = config.GROQ_API_KEY
-                    if not api_key:
-                        return "", ValueError("GROQ_API_KEY environment variable is not set")
+            api_key = config.validate_api_key("GROQ_API_KEY")
+            client = Groq(api_key=api_key)
+            if not client.api_key:
+                raise ValueError("Groq API key not found in environment variables.")
 
-                    print_debug(f"API Key: {api_key[:5]}...{api_key[-5:]}")
-                    client = Groq(api_key=api_key)
-                    print_debug("Groq client initialized")
+            # Debug print
+            print_conditional_color(f"\n[LLM] Groq ({model}) Request Messages:", "cyan")
+            for msg in messages:
+                print_api_request(json.dumps(msg, indent=2))
 
-                    messages = [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ]
+            if stream:
+                spinner.stop()  # Stop spinner before streaming
 
-                    if image_data:
-                        print_debug("Processing image data")
-                        if isinstance(image_data, str):
-                            image_data = [image_data]
+                async def stream_generator():
+                    try:
+                        response = client.chat.completions.create(
+                            model=model,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            response_format={"type": "json_object"} if require_json_output else None,
+                            stream=True,
+                        )
+                        for chunk in response:
+                            if chunk.choices[0].delta.content:
+                                content = chunk.choices[0].delta.content
+                                if debug:
+                                    print_debug(f"Streaming chunk: {content}")
+                                yield content
+                    except Exception as e:
+                        print_error(f"An error occurred during streaming: {e}")
+                        yield ""
 
-                        for i, image in enumerate(image_data, start=1):
-                            messages.append(
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {"type": "text", "text": f"Image {i}:"},
-                                        {"type": "image_url", "image_url": {"url": image}},
-                                    ],
-                                }
-                            )
+                return stream_generator()
 
-                    print_conditional_color(f"\n[LLM] Groq ({model}) Request Messages:", "cyan")
-                    for msg in messages:
-                        print_api_request(json.dumps(msg, indent=2))
+            # Non-streaming logic
+            spinner.text = f"Waiting for {model} response..."
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"} if require_json_output else None,
+            )
 
-                    response: GroqChatCompletion = client.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        response_format={"type": "json_object"} if require_json_output else None,
-                    )
+            content = response.choices[0].message.content
+            spinner.succeed("Request completed")
 
-                    print_debug("API response received")
+            if verbosity:
+                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
+                print_api_response(content.strip())
+            return content.strip(), None
 
-                    response_text = response.choices[0].message.content
-                    print_debug(f"Processed response text (truncated): {response_text[:100]}...")
-
-                    if require_json_output:
-                        try:
-                            json_response = parse_json_response(response_text)
-                        except ValueError as e:
-                            return "", ValueError(f"Failed to parse response as JSON: {e}")
-
-                        return json.dumps(json_response), None
-
-                    return response_text.strip(), None
-
-                except OpenAIRateLimitError as e:
-                    print_error(f"Rate limit exceeded: {e}")
-                    if attempt < MAX_RETRIES - 1:
-                        retry_delay = min(MAX_DELAY, BASE_DELAY * (2**attempt))
-                        jitter = random.uniform(0, 0.1 * retry_delay)
-                        total_delay = retry_delay + jitter
-                        print_error(f"Retrying in {total_delay:.2f} seconds...")
-                        time.sleep(total_delay)
-                    else:
-                        return "", e
-
-                except OpenAITimeoutError as e:
-                    print_error(f"API request timed out: {e}")
-                    if attempt < MAX_RETRIES - 1:
-                        retry_delay = min(MAX_DELAY, BASE_DELAY * (2**attempt))
-                        print_error(f"Retrying in {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                    else:
-                        return "", e
-
-                except OpenAIConnectionError as e:
-                    print_error(f"API connection error: {e}")
-                    if attempt < MAX_RETRIES - 1:
-                        retry_delay = min(MAX_DELAY, BASE_DELAY * (2**attempt))
-                        print_error(f"Retrying in {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                    else:
-                        return "", e
-
-                except OpenAIAPIError as e:
-                    print_error(f"API error: {e}")
-                    return "", e
-
-                except Exception as e:
-                    print_error(f"An unexpected error occurred: {e}")
-                    print_debug(f"Error details: {type(e).__name__}, {e}")
-                    return "", e
-
-            print_debug("Max retries reached")
-            return "", Exception("Max retries reached")
-
+        except Exception as e:
+            spinner.fail("Request failed")
+            print_error(f"Unexpected error: {str(e)}")
+            return "", e
         finally:
-            stop_spinner.set()
-            spinner_thread.join()
-            if "response_text" in locals() and response_text:
-                spinner.succeed("Request completed")
-                print_api_response(response_text.strip())
-            else:
-                spinner.fail("Request failed")
-
-    @staticmethod
-    def gemma2_9b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "gemma2-9b-it",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def gemma_7b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "gemma-7b-it",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def llama3_groq_70b_tool_use(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "llama3-groq-70b-8192-tool-use-preview",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def llama3_groq_8b_tool_use(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "llama3-groq-8b-8192-tool-use-preview",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def llama_3_1_70b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 8000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "llama-3.1-70b-versatile",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def llama_3_1_8b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 8000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "llama-3.1-8b-instant",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def llama_guard_3_8b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "llama-guard-3-8b",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def llava_1_5_7b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "llava-v1.5-7b-4096-preview",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def llama3_70b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "llama3-70b-8192",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def llama3_8b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "llama3-8b-8192",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
-
-    @staticmethod
-    def mixtral_8x7b(
-        system_prompt: str,
-        user_prompt: str,
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-    ) -> Tuple[str, Optional[Exception]]:
-        return GroqModels.call_groq(
-            system_prompt,
-            user_prompt,
-            "mixtral-8x7b-32768",
-            image_data,
-            temperature,
-            max_tokens,
-            require_json_output,
-        )
+            if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
 
     @staticmethod
     def custom_model(model_name: str):
-        def wrapper(
-            system_prompt: str = "",
-            user_prompt: str = "",
+        async def wrapper(
             image_data: Union[List[str], str, None] = None,
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-        ) -> Tuple[str, Optional[Exception]]:
-            return GroqModels.call_groq(
-                system_prompt,
-                user_prompt,
-                model_name,
-                image_data,
-                temperature,
-                max_tokens,
-                require_json_output,
+            messages: Optional[List[Dict[str, str]]] = None,
+            stream: bool = False,
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+            return await GroqModels.send_groq_request(
+                model=model_name,
+                image_data=image_data,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                require_json_output=require_json_output,
+                messages=messages,
+                stream=stream,
             )
 
         return wrapper
+
+    # Model-specific methods using custom_model
+    gemma2_9b = custom_model("gemma2-9b-it")
+    gemma_7b = custom_model("gemma-7b-it")
+    llama3_groq_70b_tool_use = custom_model("llama3-groq-70b-8192-tool-use-preview")
+    llama3_groq_8b_tool_use = custom_model("llama3-groq-8b-8192-tool-use-preview")
+    llama_3_1_70b = custom_model("llama-3.1-70b-versatile")
+    llama_3_1_8b = custom_model("llama-3.1-8b-instant")
+    llama_guard_3_8b = custom_model("llama-guard-3-8b")
+    llava_1_5_7b = custom_model("llava-v1.5-7b-4096-preview")
+    llama3_70b = custom_model("llama3-70b-8192")
+    llama3_8b = custom_model("llama3-8b-8192")
+    mixtral_8x7b = custom_model("mixtral-8x7b-32768")
 
 
 class TogetheraiModels:
