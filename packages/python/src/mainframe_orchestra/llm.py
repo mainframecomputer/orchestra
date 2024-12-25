@@ -30,6 +30,7 @@ from openai import (
 from groq import Groq
 from groq.types.chat import ChatCompletion as GroqChatCompletion
 import ollama
+import google.generativeai as genai
 
 # Import config, fall back to environment variables if not found
 try:
@@ -374,7 +375,7 @@ class OpenaiModels:
             max_tokens: int = 4000,
             require_json_output: bool = False,
             messages: Optional[List[Dict[str, str]]] = None,
-            stream: bool = False,  # Added stream parameter
+            stream: bool = False,
         ) -> Tuple[str, Optional[Exception]]:
             return await OpenaiModels.send_openai_request(
                 model=model_name,
@@ -383,7 +384,7 @@ class OpenaiModels:
                 max_tokens=max_tokens,
                 require_json_output=require_json_output,
                 messages=messages,
-                stream=stream,  # Pass stream to send_openai_request
+                stream=stream,
             )
 
         return wrapper
@@ -631,9 +632,6 @@ class AnthropicModels:
     haiku_3_5 = custom_model("claude-3-5-haiku-latest")
 
 
-# Following providers are not yet converted to messages array
-
-
 class OpenrouterModels:
     """
     Class containing methods for interacting with OpenRouter models.
@@ -652,6 +650,9 @@ class OpenrouterModels:
         """
         Sends a request to OpenRouter API asynchronously and handles retries.
         """
+        spinner = Halo(text="Sending request to OpenRouter...", spinner="dots")
+        spinner.start()
+
         try:
             client = AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1", api_key=config.OPENROUTER_API_KEY
@@ -665,6 +666,8 @@ class OpenrouterModels:
                 print_api_request(json.dumps(msg, indent=2))
 
             if stream:
+                spinner.stop()  # Stop spinner before streaming
+                collected_content = []
 
                 async def stream_generator():
                     try:
@@ -681,16 +684,24 @@ class OpenrouterModels:
                         async for chunk in response:
                             if chunk.choices[0].delta.content:
                                 content = chunk.choices[0].delta.content
+                                collected_content.append(content)
                                 if debug:
                                     print_debug(f"Streaming chunk: {content}")
                                 yield content
+                        
+                        if verbosity:
+                            print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
+                            print_api_response("".join(collected_content))
+                        yield "\n"
+
                     except Exception as e:
                         print_error(f"An error occurred during streaming: {e}")
-                        yield ""
+                        yield "\n"
 
                 return stream_generator()
 
             # Non-streaming logic
+            spinner.text = f"Waiting for {model} response..."
             response = await client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -700,14 +711,20 @@ class OpenrouterModels:
             )
 
             content = response.choices[0].message.content
+            spinner.succeed("Request completed")
+
             if verbosity:
                 print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
                 print_api_response(content.strip())
             return content.strip(), None
 
         except Exception as e:
+            spinner.fail("Request failed")
             print_error(f"Unexpected error: {str(e)}")
             return "", e
+        finally:
+            if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
 
     @staticmethod
     def custom_model(model_name: str):
@@ -718,7 +735,7 @@ class OpenrouterModels:
             require_json_output: bool = False,
             messages: Optional[List[Dict[str, str]]] = None,
             stream: bool = False,
-        ) -> Tuple[str, Optional[Exception]]:
+        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
             return await OpenrouterModels.send_openrouter_request(
                 model=model_name,
                 image_data=image_data,
@@ -793,7 +810,7 @@ class OllamaModels:
         """
         print_model_request("Ollama", model)
         if debug:
-            print_debug(f"Entering call_ollama function")
+            print_debug("Entering call_ollama function")
             print_debug(
                 f"Parameters: model={model}, messages={messages}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
             )
@@ -937,7 +954,7 @@ class GroqModels:
     ) -> Tuple[str, Optional[Exception]]:
         print_model_request("Groq", model)
         if debug:
-            print_debug(f"Entering call_groq function")
+            print_debug("Entering call_groq function")
             print_debug(
                 f"Parameters: system_prompt={system_prompt}, user_prompt={user_prompt}, model={model}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
             )
@@ -968,7 +985,7 @@ class GroqModels:
 
                     print_debug(f"API Key: {api_key[:5]}...{api_key[-5:]}")
                     client = Groq(api_key=api_key)
-                    print_debug(f"Groq client initialized")
+                    print_debug("Groq client initialized")
 
                     messages = [
                         {"role": "system", "content": system_prompt},
@@ -1003,7 +1020,7 @@ class GroqModels:
                         response_format={"type": "json_object"} if require_json_output else None,
                     )
 
-                    print_debug(f"API response received")
+                    print_debug("API response received")
 
                     response_text = response.choices[0].message.content
                     print_debug(f"Processed response text (truncated): {response_text[:100]}...")
@@ -1328,7 +1345,7 @@ class TogetheraiModels:
 
         print_model_request("Together AI", model)
         if debug:
-            print_debug(f"Entering call_together function")
+            print_debug("Entering call_together function")
             print_debug(
                 f"Parameters: system_prompt={system_prompt}, user_prompt={user_prompt}, model={model}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
             )
@@ -1359,7 +1376,7 @@ class TogetheraiModels:
 
                     print_debug(f"API Key: {api_key[:5]}...{api_key[-5:]}")
                     client = OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
-                    print_debug(f"Together client initialized via OpenAI")
+                    print_debug("Together client initialized via OpenAI")
 
                     messages = [
                         {"role": "system", "content": system_prompt},
@@ -1405,18 +1422,19 @@ class TogetheraiModels:
                         response_format={"type": "json_object"} if use_json else None,
                     )
 
-                    print_debug(f"API response received")
+                    print_debug("API response received")
                     response_text = response.choices[0].message.content
                     print_debug(f"Processed response text (truncated): {response_text[:100]}...")
 
                     if require_json_output:
                         try:
-                            json_response = parse_json_response(response_text)
-                        except ValueError as e:
-                            return "", ValueError(f"Failed to parse response as JSON: {e}")
-                        return json.dumps(json_response), None
-
-                    return response_text.strip(), None
+                            parsed = json.loads(response_text)
+                            yield json.dumps(parsed)
+                        except ValueError as ve:
+                            print_error(f"Failed to parse Gemini response as JSON: {ve}")
+                            yield ""
+                    else:
+                        yield response_text
 
                 except Exception as e:
                     print_error(f"An error occurred: {e}")
@@ -1463,3 +1481,158 @@ class TogetheraiModels:
             )
 
         return wrapper
+
+
+class GeminiModels:
+    """
+    Class containing methods for interacting with Google's Gemini models using the chat format.
+    """
+
+    @staticmethod
+    async def send_gemini_request(
+        model: str = "",
+        image_data: Union[List[str], str, None] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        require_json_output: bool = False,
+        messages: Optional[List[Dict[str, str]]] = None,
+        stream: bool = False,
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+        """
+        Sends a request to Gemini using the chat format.
+        """
+        # Create spinner only once at the start
+        spinner = Halo(text=f"Sending request to Gemini ({model})...", spinner="dots")
+        
+        try:
+            # Start spinner
+            spinner.start()
+
+            # Configure API and model
+            api_key = config.validate_api_key("GEMINI_API_KEY")
+            genai.configure(api_key=api_key)
+
+            generation_config = {
+                "temperature": temperature,
+                "max_output_tokens": max_tokens,
+            }
+            
+            if require_json_output:
+                generation_config.update({
+                    "response_mime_type": "application/json"
+                })
+
+            model_instance = genai.GenerativeModel(
+                model_name=model,
+                generation_config=genai.GenerationConfig(**generation_config)
+            )
+
+            # Print all messages together after spinner starts
+            if messages:
+                print_conditional_color(f"\n[LLM] Gemini ({model}) Request Messages:", "cyan")
+                for msg in messages:
+                    print_api_request(json.dumps(msg, indent=2))
+
+            if stream:
+                spinner.stop()
+                last_user_message = next((msg["content"] for msg in reversed(messages) if msg["role"] == "user"), "")
+                
+                try:
+                    response = model_instance.generate_content(last_user_message, stream=True)
+                    for chunk in response:
+                        if chunk.text:
+                            if debug:
+                                print_debug(f"Streaming chunk: {chunk.text}")
+                            yield chunk.text
+                    
+                except Exception as e:
+                    print_error(f"Gemini streaming error: {str(e)}")
+                    yield ""
+            else:
+                # Non-streaming: Use chat format
+                chat = model_instance.start_chat(history=[])
+                
+                # Process messages and images
+                if messages:
+                    for msg in messages:
+                        role = msg["role"]
+                        content = msg["content"]
+                        
+                        if role == "user":
+                            if image_data and msg == messages[-1]:
+                                parts = []
+                                if isinstance(image_data, str):
+                                    image_data = [image_data]
+                                for img in image_data:
+                                    parts.append({"mime_type": "image/jpeg", "data": img})
+                                parts.append(content)
+                                response = chat.send_message(parts)
+                            else:
+                                response = chat.send_message(content)
+                        elif role == "assistant":
+                            chat.history.append({"role": "model", "parts": [content]})
+
+                # Get the final response
+                text_output = response.text.strip()
+                spinner.succeed("Request completed")
+
+                # Print response if verbosity enabled
+                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
+                print_api_response(text_output.strip())
+
+                if require_json_output:
+                    try:
+                        parsed = json.loads(text_output)
+                        yield json.dumps(parsed)
+                    except ValueError as ve:
+                        print_error(f"Failed to parse Gemini response as JSON: {ve}")
+                        yield ""
+                else:
+                    yield text_output
+
+        except Exception as e:
+            spinner.fail("Gemini request failed")
+            print_error(f"Unexpected error for Gemini model ({model}): {str(e)}")
+            yield ""
+
+    @staticmethod
+    def custom_model(model_name: str):
+        async def wrapper(
+            image_data: Union[List[str], str, None] = None,
+            temperature: float = 0.7,
+            max_tokens: int = 4000,
+            require_json_output: bool = False,
+            messages: Optional[List[Dict[str, str]]] = None,
+            stream: bool = False,
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+            if stream:
+                # For streaming, return the generator directly
+                return GeminiModels.send_gemini_request(
+                    model=model_name,
+                    image_data=image_data,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    require_json_output=require_json_output,
+                    messages=messages,
+                    stream=True,
+                )
+            else:
+                # For non-streaming, await and return the first (and only) yielded value
+                async for response in GeminiModels.send_gemini_request(
+                    model=model_name,
+                    image_data=image_data,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    require_json_output=require_json_output,
+                    messages=messages,
+                    stream=False,
+                ):
+                    return response, None  # Return the first yielded value
+                return "", None  # Return empty if no response
+        return wrapper
+
+    # Model-specific methods using custom_model
+    # gemini_2_0_flash = custom_model("gemini-2.0-flash")  # Experimental
+    gemini_1_5_flash = custom_model("gemini-1.5-flash")
+    gemini_1_5_flash_8b = custom_model("gemini-1.5-flash-8b")
+    gemini_1_5_pro = custom_model("gemini-1.5-pro")
