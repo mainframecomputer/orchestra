@@ -4,7 +4,6 @@ import os
 import time
 import random
 import re
-import threading
 import json
 from typing import List, Dict, Union, Tuple, Optional, Iterator, AsyncGenerator
 from halo import Halo
@@ -28,7 +27,6 @@ from openai import (
     BadRequestError as OpenAIBadRequestError,
 )
 from groq import Groq
-from groq.types.chat import ChatCompletion as GroqChatCompletion
 import ollama
 import google.generativeai as genai
 
