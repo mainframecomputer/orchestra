@@ -47,7 +47,7 @@ class Utils:
         with open(image_path, "rb") as image_file:
             img = np.frombuffer(image_file.read(), dtype=np.uint8)
             img = img.reshape((-1, 3))  # Assuming 3 channels (RGB)
-            resized_img = img[::int(1/scale_factor)]
+            resized_img = img[:: int(1 / scale_factor)]
             buffer = BytesIO()
             np.save(buffer, resized_img, allow_pickle=False)
             return base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -69,12 +69,12 @@ class Utils:
         """
         if isinstance(response, dict):
             return response
-        
+
         if isinstance(response, str):
             try:
                 return json.loads(response)
             except json.JSONDecodeError:
-                json_match = re.search(r'\{.*?\}', response, re.DOTALL)
+                json_match = re.search(r"\{.*?\}", response, re.DOTALL)
                 if json_match:
                     json_str = json_match.group(0)
                     try:
@@ -83,5 +83,5 @@ class Utils:
                         raise ValueError(f"Failed to parse JSON from response: {response}")
                 else:
                     raise ValueError(f"No JSON object found in response: {response}")
-        
+
         raise ValueError(f"Unexpected response type: {type(response)}")
