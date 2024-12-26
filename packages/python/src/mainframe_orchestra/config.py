@@ -37,6 +37,7 @@ class Config(ABC):
 class EnvConfig(Config):
     """Environment-based configuration that pulls from env vars."""
 
+
     def __init__(self):
         # Initialize LLM Provider API Keys from environment variables
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

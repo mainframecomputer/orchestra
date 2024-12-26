@@ -479,18 +479,15 @@ class AnthropicModels:
                     )
 
             # Debug print the request parameters with colors
-            print_conditional_color(f"\n[LLM] Anthropic ({model}) Request Messages:", "cyan")
-            print(
-                f"  \033[36msystem_message\033[0m: \033[32m{system_message}\033[0m"
-            )  # Print system message
-            print("  \033[36mmessages\033[0m:")
-            for msg in anthropic_messages:
-                print(f"    \033[32m{msg}\033[0m")
-            print(f"  \033[36mtemperature\033[0m: \033[32m{temperature}\033[0m")
-            print(f"  \033[36mmax_tokens\033[0m: \033[32m{max_tokens}\033[0m")
-            print(
-                f"  \033[36mstop_sequences\033[0m: \033[32m{stop_sequences if stop_sequences else None}\033[0m"
-            )
+            if verbosity:
+                print_conditional_color(f"\n[LLM] Anthropic ({model}) Request Messages:", "cyan")
+                print_api_request(f"\nsystem_message: {system_message}")  # Print system message with newline
+                print_api_request("  messages:")
+                for msg in anthropic_messages:
+                    print_api_request(f"    {msg}")
+                print_api_request(f"  temperature: {temperature}")
+                print_api_request(f"  max_tokens: {max_tokens}")
+                print_api_request(f"  stop_sequences: {stop_sequences if stop_sequences else None}")
 
             # Handle streaming
             if stream:
@@ -883,12 +880,16 @@ class OllamaModels:
 
                     response_text = response["message"]["content"]
 
+                    # verbosity printing before json parsing
+                    if verbosity:
+                        print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
+                        print_api_response(response_text.strip())
+
                     if require_json_output:
                         try:
                             json_response = parse_json_response(response_text)
                         except ValueError as e:
                             return "", ValueError(f"Failed to parse response as JSON: {e}")
-
                         return json.dumps(json_response), None
 
                     return response_text.strip(), None

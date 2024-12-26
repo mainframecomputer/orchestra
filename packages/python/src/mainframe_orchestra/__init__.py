@@ -17,6 +17,7 @@ from .llm import (
     OllamaModels,
     GroqModels,
     TogetheraiModels,
+    GeminiModels
 )
 from .tools import (
     FileTools,
@@ -99,6 +100,7 @@ __all__ = [
     "OllamaModels",
     "GroqModels",
     "TogetheraiModels",
+    "GeminiModels",
     # List core tools
     "FileTools",
     "EmbeddingsTools",

@@ -186,71 +186,39 @@ class Task(BaseModel):
         tool_summaries (bool): Whether to include summaries for tool calls
     """
 
-    # Agent-specific fields - provide directly or via agent instance
+    # Agent-specific fields
     agent_id: Optional[str] = Field(None, description="The ID of the agent performing the task")
     role: str = Field(..., description="The role or type of agent performing the task")
     goal: str = Field(..., description="The objective or purpose of the task")
-    attributes: Optional[str] = Field(
-        None,
-        description="Additional attributes or characteristics of the agent or expected responses",
-    )
-
-    # Agent instance (contains all fields above)
+    attributes: Optional[str] = Field(None, description="Additional attributes or characteristics of the agent or expected responses")
     agent: Optional[Any] = Field(None, description="The agent associated with this task")
 
     # Core task inputs
     instruction: str = Field(..., description="Specific directions for completing the task")
-    context: Optional[str] = Field(
-        None, description="The background information or setting for the task"
-    )
+    context: Optional[str] = Field(None, description="The background information or setting for the task")
 
     # Model configuration
-    llm: Union[Callable, List[Callable], Tuple[Callable, ...]] = Field(
-        ...,
-        description="The language model function(s) to be called. Can be a single function or multiple functions for fallback.",
-    )
-    temperature: Optional[float] = Field(
-        default=0.7, description="Temperature setting for the language model"
-    )
-    max_tokens: Optional[int] = Field(
-        default=4000, description="Maximum number of tokens for the language model response"
-    )
-    require_json_output: bool = Field(
-        default=False, description="Whether to request JSON output from the LLM"
-    )
+    llm: Union[Callable, List[Callable], Tuple[Callable, ...]] = Field(..., description="The language model function(s) to be called. Can be a single function or multiple functions for fallback.")
+    temperature: Optional[float] = Field(default=0.7, description="Temperature setting for the language model")
+    max_tokens: Optional[int] = Field(default=4000, description="Maximum number of tokens for the language model response")
+    require_json_output: bool = Field(default=False, description="Whether to request JSON output from the LLM")
 
     # Input/Output handling
-    image_data: Optional[Union[List[str], str]] = Field(
-        None, description="Optional base64-encoded image data"
-    )
+    image_data: Optional[Union[List[str], str]] = Field(None, description="Optional base64-encoded image data")
     stream: bool = Field(default=False, description="Whether to stream the final LLM response")
-    messages: List[Dict[str, Any]] = Field(
-        default_factory=list, description="List of messages in OpenAI chat format"
-    )
+    messages: List[Dict[str, Any]] = Field(default_factory=list, description="List of messages in OpenAI chat format")
 
     # Tool configuration
-    tools: Optional[Set[Callable]] = Field(
-        default=None, description="Optional set of tool functions"
-    )
-    tool_summaries: bool = Field(
-        default=False, description="Whether to include explanatory summaries for tool calls"
-    )
+    tools: Optional[Set[Callable]] = Field(default=None, description="Optional set of tool functions")
+    tool_summaries: bool = Field(default=False, description="Whether to include explanatory summaries for tool calls")
 
     # Response handling
-    initial_response: bool = Field(
-        default=False, description="Whether to provide an initial response before tool execution"
-    )
+    initial_response: bool = Field(default=False, description="Whether to provide an initial response before tool execution")
 
     # Execution control
-    thread_id: Optional[str] = Field(
-        None, description="Thread ID for tracking conversation context"
-    )
-    event_queue: Optional[Any] = Field(
-        None, description="An optional event queue for inter-thread communication."
-    )
-    pre_execute: Optional[Callable[[Dict[str, Any]], None]] = Field(
-        None, description="Optional pre-execution callback"
-    )
+    thread_id: Optional[str] = Field(None, description="Thread ID for tracking conversation context")
+    event_queue: Optional[Any] = Field(None, description="An optional event queue for inter-thread communication.")
+    pre_execute: Optional[Callable[[Dict[str, Any]], None]] = Field(None, description="Optional pre-execution callback")
 
     # Pydantic configuration
     model_config = {"arbitrary_types_allowed": True}
@@ -746,6 +714,7 @@ The original task instruction:
                     # Handle explicit completion
                     if len(response_data["tool_calls"]) == 0:
                         logger.info("Received explicit completion signal (empty tool_calls)")
+                        print(f"\n{LogColors.CYAN}Tool Use: {LogColors.BLUE}Loop Exited{LogColors.RESET}\n")
                         if callback:
                             await callback(
                                 {
@@ -1080,8 +1049,10 @@ The original task instruction:
                         if json_match:
                             return json.loads(json_match.group(0))
                     return json.loads(result)
-                except json.JSONDecodeError:
-                    return ValueError(f"Failed to parse JSON from LLM response: {result}")
+
+                except json.JSONDecodeError as e:
+                    return ValueError(f"Failed to parse JSON from LLM response: {result}\nError: {e}")
+
 
             return result
 
