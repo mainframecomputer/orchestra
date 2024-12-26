@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import os
 from typing import Optional
 
+
 class Config(ABC):
     """Base configuration class that can be extended by applications."""
 

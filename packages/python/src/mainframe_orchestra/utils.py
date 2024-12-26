@@ -5,8 +5,9 @@ import base64
 import re
 import json
 from typing import Union
-class Utils:
 
+
+class Utils:
     @staticmethod
     def update_conversation_history(history, role, content):
         """
@@ -24,7 +25,6 @@ class Utils:
         formatted_message = f"[{timestamp}] {role}: {content}"
         history.append(formatted_message)
         return history
-
 
     @staticmethod
     def image_to_base64(image_path: str, scale_factor: float = 0.5) -> str:
@@ -51,7 +51,6 @@ class Utils:
             buffer = BytesIO()
             np.save(buffer, resized_img, allow_pickle=False)
             return base64.b64encode(buffer.getvalue()).decode("utf-8")
-
 
     @staticmethod
     def parse_json_response(response: Union[str, dict]) -> dict:
