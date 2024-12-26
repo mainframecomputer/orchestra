@@ -974,7 +974,6 @@ The original task instruction:
                                         }
                                     )
 
-                                timestamp = datetime.now().isoformat()
                                 formatted_result = (
                                     f"\nTool Execution:\n"
                                     f"Tool: '{tool_name}'\n"
@@ -1081,7 +1080,7 @@ The original task instruction:
                         if json_match:
                             return json.loads(json_match.group(0))
                     return json.loads(result)
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError:
                     return ValueError(f"Failed to parse JSON from LLM response: {result}")
 
             return result
