@@ -30,6 +30,8 @@ from .tools import (
     FAISSTools,
     PineconeTools,
     LinearTools,
+    SemanticSplitter,
+    SentenceSplitter,  
 )
 
 # Conditional imports for optional dependencies
@@ -56,7 +58,6 @@ def __getattr__(name):
         "FredTools": ("fred_tools", ["fredapi"]),
         "StripeTools": ("stripe_tools", ["stripe-agent-toolkit"]),
         "TextToSpeechTools": ("audio_tools", ["elevenlabs", "pygame"]),
-        "WhisperTools": ("audio_tools", ["openai"]),
     }
 
     if name in package_map:
@@ -115,12 +116,14 @@ __all__ = [
     "FAISSTools",
     "PineconeTools",
     "LinearTools",
+    "SemanticSplitter",
+    "SentenceSplitter",
+    "WhisperTools",
     # Optional tools
     "LangchainTools",
     "MatplotlibTools",
     "YahooFinanceTools",
     "TextToSpeechTools",
-    "WhisperTools",
     "FredTools",
     "StripeTools",
 ]

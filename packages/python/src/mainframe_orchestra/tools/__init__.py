@@ -25,7 +25,8 @@ __all__ = [
     'WebTools',
     'WikipediaTools',
     'SemanticSplitter',
-    'SentenceSplitter'
+    'SentenceSplitter',
+    'WhisperTools',
 ]
 
 # Helper function for optional imports
@@ -74,9 +75,3 @@ try:
     __all__.append('TextToSpeechTools')
 except ImportError:
     TextToSpeechTools = _optional_import('TextToSpeechTools', 'elevenlabs pygame')
-
-try:
-    from .audio_tools import WhisperTools
-    __all__.append('WhisperTools')
-except ImportError:
-    WhisperTools = _optional_import('WhisperTools', 'openai')
