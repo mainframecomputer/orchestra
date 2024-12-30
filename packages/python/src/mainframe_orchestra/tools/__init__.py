@@ -8,6 +8,7 @@ from .embedding_tools import EmbeddingsTools
 from .file_tools import FileTools
 from .github_tools import GitHubTools
 from .faiss_tools import FAISSTools
+from .linear_tools import LinearTools
 from .pinecone_tools import PineconeTools
 from .web_tools import WebTools
 from .wikipedia_tools import WikipediaTools
@@ -22,6 +23,7 @@ __all__ = [
     'FAISSTools',
     'FileTools',
     'GitHubTools',
+    'LinearTools',
     'PineconeTools',
     'WebTools',
     'WikipediaTools',
@@ -64,3 +66,8 @@ try:
 except ImportError:
     FredTools = _optional_import('FredTools', 'fred_tools')
 
+try:
+    from .stripe_tools import StripeTools
+    __all__.append('StripeTools')
+except ImportError:
+    StripeTools = _optional_import('StripeTools', 'stripe-agent-toolkit')
