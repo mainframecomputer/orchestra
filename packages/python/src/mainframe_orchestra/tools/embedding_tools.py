@@ -1,7 +1,7 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 import os
-from typing import List, Dict, Any, Union, Literal, Tuple
+from typing import List, Dict, Union, Literal, Tuple
 from dotenv import load_dotenv
 import requests
 import time

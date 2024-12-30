@@ -32,7 +32,6 @@ class FredTools:
         Returns:
             Dict[str, Any]: A dictionary containing the analysis results for each indicator.
         """
-        pd = check_pandas()
         Fred = check_fredapi()
         fred = Fred(api_key=os.getenv('FRED_API_KEY'))
         
@@ -129,7 +128,6 @@ class FredTools:
         Returns:
             Dict[str, Any]: A dictionary containing the sentiment analysis results.
         """
-        pd = check_pandas()
         Fred = check_fredapi()
         fred = Fred(api_key=os.getenv('FRED_API_KEY'))
         
