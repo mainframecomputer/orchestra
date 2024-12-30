@@ -42,7 +42,8 @@ if TYPE_CHECKING:
     from .tools.matplotlib_tools import MatplotlibTools
     from .tools.yahoo_finance_tools import YahooFinanceTools
     from .tools.fred_tools import FredTools
-
+    from .tools.audio_tools import WhisperTools, TextToSpeechTools
+    from .tools.stripe_tools import StripeTools 
 
 def __getattr__(name):
     package_map = {
