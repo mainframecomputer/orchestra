@@ -36,11 +36,7 @@ lxml = "*"
 halo = "*"
 groq = "*"
 numpy = "*"
-elevenlabs = "*"
 faiss-cpu = "*"
-fredapi = "*"
-yfinance = "*"
-yahoofinance = "*"
 pinecone = "*"
 sentence_splitter = "*"
 igraph = "*"
@@ -65,6 +61,13 @@ yahoo_finance_tools = [
 fred_tools = [
     "fredapi",
     "pandas"
+]
+audio_tools = [
+    "pygame",
+    "elevenlabs"
+]
+stripe_tools = [
+    "stripe-agent-toolkit"
 ]
 
 [tool.poetry.dependencies.langchain-core]

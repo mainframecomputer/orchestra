@@ -24,13 +24,12 @@ from .tools import (
     EmbeddingsTools,
     WebTools,
     GitHubTools,
-    TextToSpeechTools,
-    WhisperTools,
     WikipediaTools,
     AmadeusTools,
     CalculatorTools,
     FAISSTools,
     PineconeTools,
+    LinearTools,
 )
 
 # Conditional imports for optional dependencies
@@ -54,6 +53,9 @@ def __getattr__(name):
         "MatplotlibTools": ("matplotlib_tools", ["matplotlib"]),
         "YahooFinanceTools": ("yahoo_finance_tools", ["yfinance"]),
         "FredTools": ("fred_tools", ["fredapi"]),
+        "StripeTools": ("stripe_tools", ["stripe-agent-toolkit"]),
+        "TextToSpeechTools": ("audio_tools", ["elevenlabs", "pygame"]),
+        "WhisperTools": ("audio_tools", ["openai"]),
     }
 
     if name in package_map:
@@ -106,16 +108,18 @@ __all__ = [
     "EmbeddingsTools",
     "WebTools",
     "GitHubTools",
-    "TextToSpeechTools",
-    "WhisperTools",
     "WikipediaTools",
     "AmadeusTools",
     "CalculatorTools",
     "FAISSTools",
     "PineconeTools",
+    "LinearTools",
     # Optional tools
     "LangchainTools",
     "MatplotlibTools",
     "YahooFinanceTools",
+    "TextToSpeechTools",
+    "WhisperTools",
     "FredTools",
+    "StripeTools",
 ]

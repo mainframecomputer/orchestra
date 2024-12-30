@@ -2,7 +2,6 @@
 
 # Core tools
 from .amadeus_tools import AmadeusTools
-from .audio_tools import TextToSpeechTools, WhisperTools
 from .calculator_tools import CalculatorTools
 from .embedding_tools import EmbeddingsTools
 from .file_tools import FileTools
@@ -16,8 +15,6 @@ from .text_splitters import SemanticSplitter, SentenceSplitter
 
 __all__ = [
     'AmadeusTools',
-    'TextToSpeechTools',
-    'WhisperTools',
     'CalculatorTools',
     'EmbeddingsTools',
     'FAISSTools',
@@ -71,3 +68,15 @@ try:
     __all__.append('StripeTools')
 except ImportError:
     StripeTools = _optional_import('StripeTools', 'stripe-agent-toolkit')
+
+try:
+    from .audio_tools import TextToSpeechTools
+    __all__.append('TextToSpeechTools')
+except ImportError:
+    TextToSpeechTools = _optional_import('TextToSpeechTools', 'elevenlabs pygame')
+
+try:
+    from .audio_tools import WhisperTools
+    __all__.append('WhisperTools')
+except ImportError:
+    WhisperTools = _optional_import('WhisperTools', 'openai')
