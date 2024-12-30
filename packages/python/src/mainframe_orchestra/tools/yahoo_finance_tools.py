@@ -81,11 +81,21 @@ class YahooFinanceTools:
     def get_historical_data(ticker: str, period: str = "1y", interval: str = "1wk") -> str:
         """
         Get historical price data for a stock ticker.
+        Avoid overloading by using a wide interval on longer periods. e.g. Don't use 1y with 1d interval, or 1mo with a 1h interval.
+
+        IMPORTANT: Avoid overloading the API by using appropriate interval for period length.
+        For example:
+        - Don't use 1y period with intervals less than 1d.
+        - Don't use 6mo period with intervals less than 5d.
+        - For periods > 60d, use daily intervals or longer
+
+        Valid periods: 1d, 5d, 7d, 60d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
+        Valid intervals: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
 
         Args:
             ticker (str): The stock ticker symbol.
-            period (str): The time period to retrieve data for (e.g., "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max").
-            interval (str): The interval between data points (e.g., "5m", "30m", "1h", "1d", "5d", "1wk", "1mo", "3mo").
+            period (str): The time period to retrieve data for.
+            interval (str): The interval between data points.
 
         Returns:
             str: A JSON string containing historical price data.
@@ -98,15 +108,16 @@ class YahooFinanceTools:
             stock = yf.Ticker(ticker)
             data = stock.history(period=period, interval=interval)
             
-            # Convert DataFrame to a dictionary of records
+            # Reset index and ensure datetime handling is correct
+            data = data.copy()
+            data.index = data.index.strftime('%Y-%m-%dT%H:%M:%S%z')
             data_dict = data.reset_index().to_dict(orient='records')
             
-            # Convert datetime objects to strings and round price values
+            # Round price values
             for record in data_dict:
-                record['Date'] = record['Date'].isoformat()
                 for key in ['Open', 'High', 'Low', 'Close']:
                     if key in record:
-                        record[key] = round(record[key], 2)
+                        record[key] = round(float(record[key]), 2)
             
             # Serialize to JSON string
             return json.dumps(data_dict, default=str)
@@ -114,9 +125,15 @@ class YahooFinanceTools:
             raise ValueError(f"Error retrieving historical data for ticker {ticker}: {str(e)}")
 
     @staticmethod
-    def calculate_returns(tickers: Union[str, List[str]], period: str = "1y", interval: str = "1d"):
+    def calculate_returns(tickers: Union[str, List[str]], period: str = "1mo", interval: str = "1d"):
         """
         Calculate daily returns for given stock ticker(s).
+
+        Note: Avoid overloading the API by using appropriate interval for period length.
+        For example:
+        - Don't use 1y period with 1m/5m intervals
+        - Don't use 6mo period with intraday intervals
+        - For periods > 60d, use daily intervals or longer        
 
         Args:
             tickers (Union[str, List[str]]): The stock ticker symbol or a list of symbols.
@@ -134,7 +151,7 @@ class YahooFinanceTools:
         
         returns = {}
         try:
-            yf = check_yfinance()
+            check_yfinance()
             data = YahooFinanceTools.download_multiple_tickers(tickers, period=period, interval=interval)
             
             if data.empty:
@@ -204,18 +221,41 @@ class YahooFinanceTools:
     @staticmethod
     def download_multiple_tickers(tickers: List[str], period: str = "1mo", interval: str = "1d"):
         """
-        Download historical data for multiple tickers.
+        Download historical data for multiple tickers simultaneously.
+        IMPORTANT: Avoid overloading the API by using appropriate interval for period length.
+
+        Safe combinations:
+        - Short-term (≤ 7 days):
+            ✓ period="1d" with interval="1m" to "90m"
+            ✓ period="5d" with interval="15m" to "1h"
+            ✓ period="7d" with interval="30m" to "1d"
+        
+        - Medium-term (≤ 60 days):
+            ✓ period="1mo" with interval="1h" to "1d"
+            ✓ period="2mo" with interval="1d" to "5d"
+            ✓ period="60d" with interval="1d" to "1wk"
+        
+        - Long-term (> 60 days):
+            ✓ period="6mo" with interval="1d" to "1mo"
+            ✓ period="1y" with interval="1wk" to "3mo"
+            ✓ period="2y" with interval="1wk" to "3mo"
+
+        Unsafe combinations (will raise error):
+        ✗ period="1y" with interval < "1d"
+        ✗ period="6mo" with interval < "1d"
+        ✗ period="3mo" with interval < "1h"
 
         Args:
-            tickers (List[str]): A list of stock ticker symbols.
-            period (str): The time period to retrieve data for (e.g., "1d", "1mo", "1y").
-            interval (str): The interval between data points (e.g., "1m", "1h", "1d").
+            tickers (List[str]): A list of stock ticker symbols
+            period (str): Time period. Valid options: 1d,5d,7d,60d,1mo,3mo,6mo,1y,2y,5y,10y,ytd,max
+            interval (str): Data interval. Valid options: 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo
 
         Returns:
-            DataFrame: A DataFrame containing historical price data for all tickers.
+            DataFrame: Multi-level DataFrame containing historical price data for all tickers,
+                     grouped by ticker symbol
 
         Raises:
-            ValueError: If any ticker is invalid or data cannot be retrieved.
+            ValueError: If period/interval combination is unsafe or data cannot be retrieved
         """
         try:
             yf = check_yfinance()
