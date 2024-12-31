@@ -1,5 +1,3 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
-
 from typing import Dict, Any, List, Optional
 import requests
 import base64
@@ -7,12 +5,26 @@ import os
 
 # Define custom tools
 class GitHubTools:
+    _owner: Optional[str] = None
+    _repo: Optional[str] = None
 
-    @classmethod
-    def configure(cls, owner: str, repo: str):
-        """Configure the repository that this tools class can interact with"""
-        cls._owner: Optional[str] = owner
-        cls._repo: Optional[str] = repo
+    @staticmethod
+    def configure() -> None:
+        """
+        Configure the GitHub repository details from environment variables.
+        Expects GITHUB_OWNER and GITHUB_REPO to be set in environment.
+
+        Raises:
+            ValueError: If required environment variables are not set
+        """
+        owner = os.getenv('GITHUB_OWNER')
+        repo = os.getenv('GITHUB_REPO')
+        
+        if not owner or not repo:
+            raise ValueError("GITHUB_OWNER and GITHUB_REPO environment variables must be set")
+            
+        GitHubTools._owner = owner
+        GitHubTools._repo = repo
 
     @staticmethod
     def _get_headers(auth_required: bool = False):
@@ -241,9 +253,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-    
+        GitHubTools.configure()    
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls"
@@ -293,9 +303,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls/{pull_number}"
@@ -319,9 +327,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls/{pull_number}/commits"
@@ -358,9 +364,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-   
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls/{pull_number}/files"
@@ -397,9 +401,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-            
+        GitHubTools.configure() 
         contents = GitHubTools.get_repo_contents(path)
         structure = {}
         for item in contents:
@@ -425,9 +427,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-            
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/contents/{path}"
@@ -463,9 +463,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-            
+        GitHubTools.configure()   
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/contents/{path}"
@@ -496,9 +494,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
 
@@ -548,9 +544,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers(auth_required=True)
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/issues/{issue_number}/comments"
@@ -575,9 +569,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/issues"
@@ -624,9 +616,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         headers = GitHubTools._get_headers(auth_required=True)
 
         # Construct URL for the comparison
@@ -702,8 +692,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
+        GitHubTools.configure() 
         headers = GitHubTools._get_headers(auth_required=True)
         base_url = "https://api.github.com"
 
@@ -743,9 +732,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}"
@@ -769,9 +756,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         # Get the default branch's SHA
         default_branch = GitHubTools.get_default_branch()
         base_url = "https://api.github.com"
@@ -812,9 +797,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers(auth_required=True)
 
@@ -860,12 +843,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        if not GitHubTools._owner or not GitHubTools._repo:
-            raise ValueError("Repository owner and name must be configured using GitHubTools.configure()")
-
-        if base is None:
-            base = GitHubTools.get_default_branch()
-
+        GitHubTools.configure() 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers(auth_required=True)
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls"
