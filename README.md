@@ -38,6 +38,7 @@ from mainframe_orchestra import Agent, Task, OpenaiModels, WebTools, set_verbosi
 set_verbosity(1)
 
 research_agent = Agent(
+    agent_id="research_assistant_1",
     role="research assistant",
     goal="answer user queries",
     llm=OpenaiModels.gpt_4o,
