@@ -56,7 +56,7 @@ try:
     from .yahoo_finance_tools import YahooFinanceTools
     __all__.append('YahooFinanceTools')
 except ImportError:
-    YahooFinanceTools = _optional_import('YahooFinanceTools', 'yahoo_finance_tools')
+    YahooFinanceTools = _optional_import('YahooFinanceTools', 'yfinance yahoofinance')
 
 try:
     from .fred_tools import FredTools

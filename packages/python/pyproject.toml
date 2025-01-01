@@ -70,6 +70,14 @@ stripe_tools = [
     "stripe-agent-toolkit"
 ]
 
+[tool.poetry.dependencies.yfinance]
+version = "*"
+optional = true
+
+[tool.poetry.dependencies.yahoofinance]
+version = "*"
+optional = true
+
 [tool.poetry.dependencies.langchain-core]
 version = "*"
 optional = true

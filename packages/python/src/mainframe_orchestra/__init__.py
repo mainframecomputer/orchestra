@@ -54,7 +54,7 @@ def __getattr__(name):
             ["langchain-core", "langchain-community", "langchain-openai"],
         ),
         "MatplotlibTools": ("matplotlib_tools", ["matplotlib"]),
-        "YahooFinanceTools": ("yahoo_finance_tools", ["yfinance"]),
+        "YahooFinanceTools": ("yahoo_finance_tools", ["yfinance", "yahoofinance"]),
         "FredTools": ("fred_tools", ["fredapi"]),
         "StripeTools": ("stripe_tools", ["stripe-agent-toolkit"]),
         "TextToSpeechTools": ("audio_tools", ["elevenlabs", "pygame"]),
