@@ -1,5 +1,4 @@
-from mainframe_orchestra import Agent, Task, OpenaiModels
-from custom_tools.stripe_tools import StripeTools
+from mainframe_orchestra import Agent, Task, OpenaiModels, StripeTools
 
 # This example demonstrates how to create a chat loop with an agent that uses the StripeTools to assist with given tasks.
 
