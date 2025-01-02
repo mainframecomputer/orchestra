@@ -56,7 +56,7 @@ def __getattr__(name):
         "MatplotlibTools": ("matplotlib_tools", ["matplotlib"]),
         "YahooFinanceTools": ("yahoo_finance_tools", ["yfinance", "yahoofinance"]),
         "FredTools": ("fred_tools", ["fredapi"]),
-        "StripeTools": ("stripe_tools", ["stripe-agent-toolkit"]),
+        "StripeTools": ("stripe_tools", ["stripe_agent_toolkit"]),
         "TextToSpeechTools": ("audio_tools", ["elevenlabs", "pygame"]),
     }
 
