@@ -68,7 +68,7 @@ try:
     from .stripe_tools import StripeTools
     __all__.append('StripeTools')
 except ImportError:
-    StripeTools = _optional_import('StripeTools', 'stripe-agent-toolkit')
+    StripeTools = _optional_import('StripeTools', 'stripe stripe-agent-toolkit')
 
 try:
     from .audio_tools import TextToSpeechTools

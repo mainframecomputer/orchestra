@@ -12,7 +12,7 @@ class StripeTools:
     def __init__(self):
         load_dotenv()
         self.api = StripeAPI(
-            api_key=os.getenv('STRIPE_API_KEY'),
+            secret_key=os.getenv('STRIPE_API_KEY'),
             context=Context()
         )
 
