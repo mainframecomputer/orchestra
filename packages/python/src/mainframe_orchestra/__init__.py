@@ -31,7 +31,8 @@ from .tools import (
     PineconeTools,
     LinearTools,
     SemanticSplitter,
-    SentenceSplitter,  
+    SentenceSplitter,
+    WhisperTools 
 )
 
 # Conditional imports for optional dependencies

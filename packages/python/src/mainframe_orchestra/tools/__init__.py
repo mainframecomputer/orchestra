@@ -1,6 +1,7 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 # Core tools
+from .audio_tools import WhisperTools
 from .amadeus_tools import AmadeusTools
 from .calculator_tools import CalculatorTools
 from .embedding_tools import EmbeddingsTools
