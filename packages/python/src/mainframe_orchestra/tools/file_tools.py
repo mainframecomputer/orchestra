@@ -186,7 +186,7 @@ class FileTools:
             return None
         except UnicodeDecodeError:
             print(f"Error: Unable to decode file contents using UTF-8 encoding: {full_file_path}")
-            print(f"UnicodeDecodeError at FileTools.read_file_contents: Attempting to read with ISO-8859-1 encoding")
+            print("UnicodeDecodeError at FileTools.read_file_contents: Attempting to read with ISO-8859-1 encoding")
             try:
                 with open(full_file_path, 'r', encoding='iso-8859-1') as file:
                     file_contents = file.read()

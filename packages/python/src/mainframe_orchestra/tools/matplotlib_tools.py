@@ -1,6 +1,5 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-import warnings
 from typing import List, Union, Any
 
 def check_matplotlib_dependencies():
@@ -18,7 +17,6 @@ class MatplotlibTools:
         if 'np' not in globals() or 'plt' not in globals():
             raise ImportError("Matplotlib is not installed. To use MatplotlibTools, install the required packages with 'pip install matplotlib'")
 
-class MatplotlibTools:
     @staticmethod
     def create_line_plot(x: List[List[Union[float, str]]], y: List[List[float]], title: str = None, xlabel: str = "X", ylabel: str = "Y", 
                          output_file: str = "line_plot.png") -> Union[Any, str]:

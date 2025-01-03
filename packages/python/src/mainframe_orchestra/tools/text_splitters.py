@@ -1,6 +1,5 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-import os
 from typing import List, Union
 import numpy as np
 from dotenv import load_dotenv

@@ -1,13 +1,14 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 # Core tools
+from .audio_tools import WhisperTools
 from .amadeus_tools import AmadeusTools
-from .audio_tools import TextToSpeechTools, WhisperTools
 from .calculator_tools import CalculatorTools
 from .embedding_tools import EmbeddingsTools
 from .file_tools import FileTools
 from .github_tools import GitHubTools
 from .faiss_tools import FAISSTools
+from .linear_tools import LinearTools
 from .pinecone_tools import PineconeTools
 from .web_tools import WebTools
 from .wikipedia_tools import WikipediaTools
@@ -15,18 +16,18 @@ from .text_splitters import SemanticSplitter, SentenceSplitter
 
 __all__ = [
     'AmadeusTools',
-    'TextToSpeechTools',
-    'WhisperTools',
     'CalculatorTools',
     'EmbeddingsTools',
     'FAISSTools',
     'FileTools',
     'GitHubTools',
+    'LinearTools',
     'PineconeTools',
     'WebTools',
     'WikipediaTools',
     'SemanticSplitter',
-    'SentenceSplitter'
+    'SentenceSplitter',
+    'WhisperTools',
 ]
 
 # Helper function for optional imports
@@ -56,7 +57,7 @@ try:
     from .yahoo_finance_tools import YahooFinanceTools
     __all__.append('YahooFinanceTools')
 except ImportError:
-    YahooFinanceTools = _optional_import('YahooFinanceTools', 'yahoo_finance_tools')
+    YahooFinanceTools = _optional_import('YahooFinanceTools', 'yfinance yahoofinance')
 
 try:
     from .fred_tools import FredTools
@@ -64,3 +65,14 @@ try:
 except ImportError:
     FredTools = _optional_import('FredTools', 'fred_tools')
 
+try:
+    from .stripe_tools import StripeTools
+    __all__.append('StripeTools')
+except ImportError:
+    StripeTools = _optional_import('StripeTools', 'stripe stripe_agent_toolkit')
+
+try:
+    from .audio_tools import TextToSpeechTools
+    __all__.append('TextToSpeechTools')
+except ImportError:
+    TextToSpeechTools = _optional_import('TextToSpeechTools', 'elevenlabs pygame')

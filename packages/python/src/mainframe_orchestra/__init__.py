@@ -24,13 +24,15 @@ from .tools import (
     EmbeddingsTools,
     WebTools,
     GitHubTools,
-    TextToSpeechTools,
-    WhisperTools,
     WikipediaTools,
     AmadeusTools,
     CalculatorTools,
     FAISSTools,
     PineconeTools,
+    LinearTools,
+    SemanticSplitter,
+    SentenceSplitter,
+    WhisperTools 
 )
 
 # Conditional imports for optional dependencies
@@ -43,7 +45,8 @@ if TYPE_CHECKING:
     from .tools.matplotlib_tools import MatplotlibTools
     from .tools.yahoo_finance_tools import YahooFinanceTools
     from .tools.fred_tools import FredTools
-
+    from .tools.audio_tools import WhisperTools, TextToSpeechTools
+    from .tools.stripe_tools import StripeTools 
 
 def __getattr__(name):
     package_map = {
@@ -52,8 +55,10 @@ def __getattr__(name):
             ["langchain-core", "langchain-community", "langchain-openai"],
         ),
         "MatplotlibTools": ("matplotlib_tools", ["matplotlib"]),
-        "YahooFinanceTools": ("yahoo_finance_tools", ["yfinance"]),
+        "YahooFinanceTools": ("yahoo_finance_tools", ["yfinance", "yahoofinance"]),
         "FredTools": ("fred_tools", ["fredapi"]),
+        "StripeTools": ("stripe_tools", ["stripe", "stripe_agent_toolkit"]),
+        "TextToSpeechTools": ("audio_tools", ["elevenlabs", "pygame"]),
     }
 
     if name in package_map:
@@ -106,16 +111,20 @@ __all__ = [
     "EmbeddingsTools",
     "WebTools",
     "GitHubTools",
-    "TextToSpeechTools",
-    "WhisperTools",
     "WikipediaTools",
     "AmadeusTools",
     "CalculatorTools",
     "FAISSTools",
     "PineconeTools",
+    "LinearTools",
+    "SemanticSplitter",
+    "SentenceSplitter",
+    "WhisperTools",
     # Optional tools
     "LangchainTools",
     "MatplotlibTools",
     "YahooFinanceTools",
+    "TextToSpeechTools",
     "FredTools",
+    "StripeTools",
 ]

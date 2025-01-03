@@ -10,6 +10,23 @@ import io
 
 load_dotenv()
 
+def check_elevenlabs():
+    try:
+        from elevenlabs import play
+        from elevenlabs.client import ElevenLabs
+        return play, ElevenLabs
+    except ImportError:
+        raise ImportError("elevenlabs is required for text_to_speech. Install with `pip install elevenlabs`")
+
+def check_pygame():
+    try:
+        import os
+        os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+        import pygame
+        return pygame
+    except ImportError:
+        raise ImportError("pygame is required for audio playback. Install with `pip install pygame`")
+
 class TextToSpeechTools:
     @staticmethod
     def elevenlabs_text_to_speech(text: str, voice: str = "Giovanni", output_file: str = None):
@@ -67,8 +84,8 @@ class TextToSpeechTools:
             import os
             os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
             import pygame
-        except ModuleNotFoundError as e:
-            raise ImportError(f"pygame is required for audio playback in the openai_text_to_speech tool. Install with `pip install pygame`")
+        except ModuleNotFoundError:
+            raise ImportError("pygame is required for audio playback in the openai_text_to_speech tool. Install with `pip install pygame`")
 
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 

@@ -36,11 +36,7 @@ lxml = "*"
 halo = "*"
 groq = "*"
 numpy = "*"
-elevenlabs = "*"
 faiss-cpu = "*"
-fredapi = "*"
-yfinance = "*"
-yahoofinance = "*"
 pinecone = "*"
 sentence_splitter = "*"
 igraph = "*"
@@ -66,6 +62,21 @@ fred_tools = [
     "fredapi",
     "pandas"
 ]
+audio_tools = [
+    "pygame",
+    "elevenlabs"
+]
+stripe_tools = [
+    "stripe-agent-toolkit"
+]
+
+[tool.poetry.dependencies.yfinance]
+version = "*"
+optional = true
+
+[tool.poetry.dependencies.yahoofinance]
+version = "*"
+optional = true
 
 [tool.poetry.dependencies.langchain-core]
 version = "*"
@@ -80,6 +91,14 @@ version = "*"
 optional = true
 
 [tool.poetry.dependencies.matplotlib]
+version = "*"
+optional = true
+
+[tool.poetry.dependencies.stripe-agent-toolkit]
+version = "*"
+optional = true
+
+[tool.poetry.dependencies.elevenlabs]
 version = "*"
 optional = true
 
