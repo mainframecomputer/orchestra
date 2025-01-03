@@ -30,8 +30,8 @@ class Conduct:
             }
 
             # Format available agents string with their tools
-            available_agents = "\n                ".join(
-                f"- {agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])}"
+            available_agents = "\n            ".join(
+                f"- {agent_id}\n    ({agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])})"
                 for agent_id in sorted(agent_map.keys())
             )
 
@@ -266,8 +266,8 @@ class Compose:
                 for agent in agents
             }
             # Format available agents string
-            available_agents = "\n                ".join(
-                f"- {agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])}"
+            available_agents = "\n            ".join(
+                f"- {agent_id}\n    ({agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])})"
                 for agent_id in sorted(agent_map.keys())
             )
 
