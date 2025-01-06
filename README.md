@@ -7,6 +7,29 @@
 
 Cognitive Architectures for Multi-Agent Teams.
 
+## Table of Contents
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Core Components](#core-components)
+- [Language Models and Providers](#supported-language-models-and-providers)
+  - [OpenAI](#openai)
+  - [Anthropic](#anthropic)
+  - [Openrouter](#openrouter)
+  - [Ollama](#ollama)
+  - [Groq](#groq)
+- [Tools](#tools)
+  - [Built-in Tools](#built-in-tools)
+  - [Custom Tools](#custom-tools)
+- [Multi-Agent Teams](#multi-agent-teams)
+  - [Example: Finance Analysis Team](#example-finance-analysis-team)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Support](#support)
+
 ## Overview
 
 Mainframe-Orchestra is a lightweight, open-source agentic framework for building LLM-based pipelines and multi-agent teams. It implements a unique approach to agent orchestration that goes beyond simple routing, enabling complex workflows.
@@ -88,17 +111,76 @@ Each provider is accessible through a dedicated class (e.g., `OpenaiModels`, `An
 
 ## Tools
 
-Mainframe-Orchestra comes with a set of built-in tools that provide a wide range of functionalities, skills, actions, and knowledge for your agents to use in their task completion.  
+Mainframe-Orchestra comes with a comprehensive set of built-in tools that provide various functionalities for your agents. Here's an overview of the available tool categories:
 
-- WebTools: For web scraping, searches, and data retrieval with Serper, Exa, WeatherAPI, etc.
-- FileTools: Handling various file operations like reading CSV, JSON, and XML files.
-- GitHubTools: Interacting with GitHub repositories, including listing contributors and fetching repository contents.
-- CalculatorTools: Performing date and time calculations.
-- EmbeddingsTools: Generating embeddings for text.
-- WikipediaTools: Searching and retrieving information from Wikipedia.
-- AmadeusTools: Searching for flight information.
-- LangchainTools: A wrapper for integrating Langchain tools to allow agents to use tools in the Langchain catalog.
-- Custom Tools: You can also create your own custom tools to add any functionality you need.
+### Built-in Tools
+
+#### Data & File Operations
+- **FileTools**: Read and write CSV, JSON, XML, and other file formats
+- **TextSplitters**: Tools for chunking and splitting text documents
+- **EmbeddingsTools**: Generate embeddings for text content
+- **FaissTools**: Vector storage and similarity search operations
+- **PineconeTools**: Vector database operations with Pinecone
+
+#### Web & API Integration
+- **WebTools**: Web scraping, searches, and data retrieval (Serper, Exa, etc.)
+- **WikipediaTools**: Search and retrieve Wikipedia content
+- **AmadeusTools**: Flight information and travel data
+- **GitHubTools**: GitHub repository operations and content access
+
+#### Financial & Data Analysis
+- **YahooFinanceTools**: Stock market data and financial analysis
+- **FredTools**: Federal Reserve Economic Data access
+- **CalculatorTools**: Date, time, and mathematical calculations
+- **MatplotlibTools**: Data visualization and plotting
+
+#### Media & Content
+- **AudioTools**: Audio processing and manipulation
+
+#### Integration Tools
+- **LangchainTools**: Wrapper for accessing the Langchain tools ecosystem
+
+### Custom Tools
+
+Mainframe-Orchestra supports creating custom tools to extend functionality beyond the built-in tools. Custom tools can be implemented either as static methods or as class instance methods for more complex operations. Here's a basic example:
+
+```python
+import numpy as np
+from typing import List, Union
+
+class NumpyTools:
+    @staticmethod
+    def array_mean(arr: Union[List[float], np.ndarray]) -> Union[float, str]:
+        """
+        Calculate the mean of a given array.
+
+        Args:
+            arr (Union[List[float], np.ndarray]): Input array or list of numbers.
+
+        Returns:
+            Union[float, str]: The mean of the input array as a float, or an error message as a string.
+        """
+        try:
+            arr = np.array(arr, dtype=float)
+            if arr.size == 0:
+                return "Error: Input array is empty."
+            return float(np.mean(arr))
+        except TypeError as e:
+            return f"Error: Invalid input type. Expected a list or numpy array of numbers. Details: {e}"
+        except Exception as e:
+            return f"Error: An unexpected error occurred: {e}"
+```
+
+Tools can be assigned to agents during initialization:
+
+```python
+agent = Agent(
+    agent_id="my_agent",
+    tools={NumpyTools.array_mean, WebTools.exa_search}
+)
+```
+
+For detailed documentation on creating custom tools, including best practices for error handling and API integration, visit our [Custom Tools Documentation](https://docs.orchestra.org/orchestra/tools/writing-custom-tools).
 
 ## Multi-Agent Teams
 
