@@ -7,6 +7,29 @@
 
 Cognitive Architectures for Multi-Agent Teams.
 
+## Table of Contents
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Core Components](#core-components)
+- [Language Models and Providers](#supported-language-models-and-providers)
+  - [OpenAI](#openai)
+  - [Anthropic](#anthropic)
+  - [Openrouter](#openrouter)
+  - [Ollama](#ollama)
+  - [Groq](#groq)
+- [Tools](#tools)
+  - [Built-in Tools](#built-in-tools)
+  - [Custom Tools](#custom-tools)
+- [Multi-Agent Teams](#multi-agent-teams)
+  - [Example: Finance Analysis Team](#example-finance-analysis-team)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Support](#support)
+
 ## Overview
 
 Mainframe-Orchestra is a lightweight, open-source agentic framework for building LLM-based pipelines and multi-agent teams. It implements a unique approach to agent orchestration that goes beyond simple routing, enabling complex workflows.
