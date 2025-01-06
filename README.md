@@ -111,7 +111,7 @@ Each provider is accessible through a dedicated class (e.g., `OpenaiModels`, `An
 
 ## Tools
 
-Orchestra comes with a comprehensive set of built-in tools that provide various functionalities for your agents. Here's an overview of the available tool categories:
+Mainframe-Orchestra comes with a comprehensive set of built-in tools that provide various functionalities for your agents. Here's an overview of the available tool categories:
 
 ### Built-in Tools
 
@@ -142,7 +142,7 @@ Orchestra comes with a comprehensive set of built-in tools that provide various 
 
 ### Custom Tools
 
-Orchestra supports creating custom tools to extend functionality beyond the built-in tools. Custom tools can be implemented either as static methods or as class instance methods for more complex operations. Here's a basic example:
+Mainframe-Orchestra supports creating custom tools to extend functionality beyond the built-in tools. Custom tools can be implemented either as static methods or as class instance methods for more complex operations. Here's a basic example:
 
 ```python
 import numpy as np
