@@ -19,6 +19,8 @@ Cognitive Architectures for Multi-Agent Teams.
   - [Openrouter](#openrouter)
   - [Ollama](#ollama)
   - [Groq](#groq)
+  - [TogetherAI](#togetherai)
+  - [Gemini](#gemini)
 - [Tools](#tools)
   - [Built-in Tools](#built-in-tools)
   - [Custom Tools](#custom-tools)
@@ -93,19 +95,25 @@ print(result)
 Orchestra supports a wide range of language models from a number of providers:
 
 ### OpenAI
-GPT-4o, GPT-4o Mini, & more
+GPT-4o, GPT-4o Mini, & Custom defined models 
 
 ### Anthropic
-Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, & more
+Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, & Custom defined models 
 
 ### Openrouter
-GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & more
+GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & Custom defined models 
 
 ### Ollama
-Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & more
+Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & Custom defined models 
 
 ### Groq
-Mixtral 8x7B, Llama 3, Llama 3.1, Gemma, & more
+Mixtral 8x7B, Llama 3, Llama 3.1, Gemma, & Custom defined models
+
+### TogetherAI
+Custom defined models 
+
+### Gemini
+Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models 
 
 Each provider is accessible through a dedicated class (e.g., `OpenaiModels`, `AnthropicModels`, etc.) with methods corresponding to specific models. This structure allows for painless switching between models and providers, enabling users to leverage the most suitable LLM for their tasks.
 
@@ -127,6 +135,7 @@ Mainframe-Orchestra comes with a comprehensive set of built-in tools that provid
 - **WikipediaTools**: Search and retrieve Wikipedia content
 - **AmadeusTools**: Flight information and travel data
 - **GitHubTools**: GitHub repository operations and content access
+- **LinearTools**: Linear API-based tools for creating, updating, and retrieving tasks
 
 #### Financial & Data Analysis
 - **YahooFinanceTools**: Stock market data and financial analysis
@@ -136,6 +145,8 @@ Mainframe-Orchestra comes with a comprehensive set of built-in tools that provid
 
 #### Media & Content
 - **AudioTools**: Audio processing and manipulation
+- **TextToSpeechTools**: Text-to-speech conversion using ElevenLabs and OpenAI APIs
+- **WhisperTools**: Audio transcription and translation using OpenAI's Whisper API
 
 #### Integration Tools
 - **LangchainTools**: Wrapper for accessing the Langchain tools ecosystem

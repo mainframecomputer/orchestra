@@ -20,13 +20,14 @@ The Task class in Orchestra is defined in the task.py file. It's the core compon
 
 The `Task.create()` method is used to create a task and most often is used with the following parameters:
 - agent: The agent assigned to the task
-- context: Additional context for the task
+- messages: A list of messages to be used as conversation history for the task
 - instruction: Specific directions for the task
 
 ##### Additional Parameters
 
 The task class has a few additional optional parameters that can be used to further customize the task.
 
+- `messages`: A list of messages to be used as conversation history for the task.
 - `temperature`: The temperature of the language model.
 - `max_tokens`: The maximum number of tokens to generate.
 - `tools`: A list of tools that the language model / agent can use, specific to the task. Adds to the agents tools.
