@@ -69,19 +69,26 @@ print(result)
 Orchestra supports a wide range of language models from a number of providers:
 
 ### OpenAI
-GPT-4o, GPT-4o Mini, & more
+GPT-4o, GPT-4o Mini, & Custom defined models 
 
 ### Anthropic
-Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, & more
+Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, & Custom defined models 
 
 ### Openrouter
-GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & more
+GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & Custom defined models 
 
 ### Ollama
-Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & more
+Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & Custom defined models 
 
 ### Groq
-Mixtral 8x7B, Llama 3, Llama 3.1, Gemma, & more
+Mixtral 8x7B, Llama 3, Llama 3.1, Gemma, & Custom defined models 
+
+### TogetherAI
+Custom models 
+
+### Gemini
+Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models 
+
 
 Each provider is accessible through a dedicated class (e.g., `OpenaiModels`, `AnthropicModels`, etc.) with methods corresponding to specific models. This structure allows for painless switching between models and providers, enabling users to leverage the most suitable LLM for their tasks.
 
@@ -90,13 +97,20 @@ Each provider is accessible through a dedicated class (e.g., `OpenaiModels`, `An
 Mainframe-Orchestra comes with a set of built-in tools that provide a wide range of functionalities, skills, actions, and knowledge for your agents to use in their task completion.  
 
 - WebTools: For web scraping, searches, and data retrieval with Serper, Exa, WeatherAPI, etc.
-- FileTools: Handling various file operations like reading CSV, JSON, and XML files.
+- FileTools: Handling various file operations like reading CSV, JSON, XML, YAML files and directory tree generation.
 - GitHubTools: Interacting with GitHub repositories, including listing contributors and fetching repository contents.
 - CalculatorTools: Performing date and time calculations.
 - EmbeddingsTools: Generating embeddings for text.
 - WikipediaTools: Searching and retrieving information from Wikipedia.
 - AmadeusTools: Searching for flight information.
 - LangchainTools: A wrapper for integrating Langchain tools to allow agents to use tools in the Langchain catalog.
+- LinearTools: Linear API-based tools for creating, updating, and retrieving tasks.
+- PineconeTools: Pinecone API-based tools for vector database operations like creating indexes and querying vectors.
+- MatplotlibTools: Creating various types of plots including line plots, scatter plots, bar plots, histograms, and heatmaps.
+- YahooFinanceTools: Financial data analysis including stock information, technical analysis, and fundamental analysis.
+- FredTools: Economic data analysis tools using the FRED (Federal Reserve Economic Data) API.
+- TextToSpeechTools: Text-to-speech conversion using ElevenLabs and OpenAI APIs.
+- WhisperTools: Audio transcription and translation using OpenAI's Whisper API.
 - Custom Tools: You can also create your own custom tools to add any functionality you need.
 
 ## Multi-Agent Teams
