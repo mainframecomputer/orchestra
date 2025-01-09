@@ -43,6 +43,7 @@ igraph = "*"
 leidenalg = "*"
 fake-useragent = "*"
 google-generativeai = "*"
+tzdata = "^2024.2"
 
 [tool.poetry.extras]
 langchain_tools = [
