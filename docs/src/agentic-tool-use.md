@@ -88,7 +88,7 @@ To be used as a tool in Orchestra, a Python function should generally meet the f
 - Include a clear docstring explaining its purpose, parameters, and return value.
 - Returns error messages specific to error cases where the agent can self-correct in the retry loop.
 
-For more details on how to create your own tools, see the [Custom Tools Page](./custom-tools.md).
+For more details on how to create your own tools, see the [Custom Tools Page](/writing-custom-tools).
 
 ### Guiding LLM Tool Usage
 
