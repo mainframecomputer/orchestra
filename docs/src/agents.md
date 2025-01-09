@@ -58,7 +58,7 @@ def analysis_task (sales_data):
 
 Agents can be assigned tools to enhance their capabilities and enable them to perform specific actions. Tools are functions that the agent can use to interact with external systems, process data, or perform specialized tasks. 
 
-The agent will have the opportunity to use tools provided to the agent or the task to assist in its completion. The tools are passed to the agent's 'tools' parameter during initialization, and the agent will then be able to see and use the tools before completing their final response. They can call tools once, recursively, or multiple times in parallel. For more on tool use see the [agentic tool use](/agentic-tool-use) page.
+The agent will have the opportunity to use tools provided to the agent or the task to assist in its completion. The tools are passed to the agent's 'tools' parameter during initialization, and the agent will then be able to see and use the tools before completing their final response. They can call tools once, recursively, or multiple times in parallel. For more on tool use see the [agentic tool use](/tool-use) page.
 
 Here's an example of assigning tools to an agent:
 
