@@ -881,22 +881,37 @@ The original task instruction:
                             try:
                                 tool_func = tools_dict[tool_name]
 
+                                # Create a copy of tool_params without callback-related items
+                                serializable_params = tool_params.copy()
+                                special_params = {}
+
                                 if tool_name == "conduct_tool":
                                     logger.info(
                                         "[TOOL_LOOP] Setting up conduct_tool specific parameters"
                                     )
-                                    tool_params["callback"] = callback
-                                    tool_params["thread_id"] = self.thread_id
-                                    tool_params["event_queue"] = self.event_queue
-                                    tool_params["pre_execute"] = pre_execute
+                                    # Store callback-related parameters separately
+                                    special_params.update({
+                                        "callback": callback,
+                                        "thread_id": self.thread_id,
+                                        "event_queue": self.event_queue,
+                                        "pre_execute": pre_execute
+                                    })
+
+                                # Log only the serializable parameters
+                                logger.info(
+                                    f"Executing tool: {tool_name} with parameters: {json.dumps(serializable_params, separators=(',', ':'))}"
+                                )
 
                                 if asyncio.iscoroutinefunction(tool_func):
                                     logger.info(
                                         f"{LogColors.CYAN}Executing async tool: {tool_name}{LogColors.RESET}"
                                     )
-                                    raw_result = await tool_func(**tool_params)
+                                    # Combine the parameters only for execution
+                                    execution_params = {**serializable_params, **special_params}
+                                    raw_result = await tool_func(**execution_params)
                                 else:
-                                    raw_result = tool_func(**tool_params)
+                                    execution_params = {**serializable_params, **special_params}
+                                    raw_result = tool_func(**execution_params)
 
                                 # Check if the result is an exception
                                 if isinstance(raw_result, Exception):
