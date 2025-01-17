@@ -47,14 +47,14 @@ Once you have installed Orchestra, you can start building your agentic workflows
 
 ```python
 # Single Agent example
-from mainframe_orchestra import Task, Agent, WebTools, OpenRouterModels
+from mainframe_orchestra import Task, Agent, WebTools, OpenrouterModels
 
 researcher = Agent(
     role="research assistant",
     goal="answer user queries",
     attributes="thorough in web research",
     tools={WebTools.serper_search},
-    llm=OpenRouterModels.haiku
+    llm=OpenrouterModels.haiku
 )
 
 def research_task(agent, topic):
