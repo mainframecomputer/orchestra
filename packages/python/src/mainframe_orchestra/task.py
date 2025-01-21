@@ -806,6 +806,8 @@ The original task instruction:
                                 # Consume the stream
                                 async for chunk in initial_stream:
                                     pass  # The callback will handle the chunks
+                            else:
+                                await self._direct_llm_call(callback)
                         finally:
                             self.require_json_output = original_json_requirement
                             self.messages = original_messages
