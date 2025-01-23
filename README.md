@@ -21,6 +21,7 @@ Cognitive Architectures for Multi-Agent Teams.
   - [Groq](#groq)
   - [TogetherAI](#togetherai)
   - [Gemini](#gemini)
+  - [Deepseek](#deepseek)
 - [Tools](#tools)
   - [Built-in Tools](#built-in-tools)
   - [Custom Tools](#custom-tools)
@@ -114,6 +115,9 @@ Custom defined models
 
 ### Gemini
 Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models 
+
+### Deepseek
+Deepseek Reasoner, Deepseek Chat, & Custom defined models
 
 Each provider is accessible through a dedicated class (e.g., `OpenaiModels`, `AnthropicModels`, etc.) with methods corresponding to specific models. This structure allows for painless switching between models and providers, enabling users to leverage the most suitable LLM for their tasks.
 
@@ -241,7 +245,7 @@ conductor_agent = Agent(
     agent_id="conductor_agent",
     role="Conductor",
     goal="Conduct the orchestra",
-    attributes="You have expertise in orchestrating the orchestra.",
+    attributes="You have expertise in orchestrating the agents in your team.",
     llm=OpenaiModels.gpt_4o,
     tools=[Conduct.conduct_tool(market_analyst, fundamental_analyst, technical_analyst, sentiment_analyst)]
 )
@@ -267,6 +271,9 @@ if __name__ == "__main__":
 ```
 
 Note: this example requires the yahoofinance and yfinance packages to be installed. You can install them with `pip install yahoofinance yfinance`.
+
+## Conduct and Compose
+The `Conduct` and `Compose` tools are used to orchestrate and compose agents. Conduct is used to actually instruct and orchestrate a team of agents, while Compose is used in addition to the Conduct tool to enrich the orchestration process with additional complexity as a preprocessing step. It's important to note that Conduct is required for the orchestration process to work, while Compose is an optional additional tool that can be used to enrich the orchestration process.
 
 By combining agents, tasks, tools, and language models, you can create a wide range of workflows, from simple pipelines to complex multi-agent teams.
 

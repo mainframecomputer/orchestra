@@ -13,6 +13,7 @@ The LLM interfaces are defined in the llm.py module. This module contains severa
 - GroqModels
 - TogetheraiModels
 - GeminiModels
+- DeepseekModels
 
 Each class contains static methods corresponding to specific models offered by the provider, following a consistent structure.
 
@@ -27,6 +28,7 @@ Orchestra supports a wide range of language models from various providers. Here'
 - Groq Models: Gemma, Llama3, Llama3.1, Mixtral
 - Togetherai Models: Meta Llama 3.1, Mixtral, Mistral, many other open source models
 - Gemini Models: Gemini 2.0, Gemini 1.5 Pro, Gemini 1.5 Flash, Gemini 1.5 Pro (Flash)
+- Deepseek Models: Deepseek Reasoner, Deepseek Chat
 
 ### Integrating Language Models
 
