@@ -543,6 +543,19 @@ class Task(BaseModel):
                     response, error = llm_result
                     if error:
                         raise error
+                    
+                    # Check if response itself is a reasoning tuple
+                    if isinstance(response, tuple) and len(response) == 2:
+                        reasoning, answer = response
+                        if callback:
+                            await callback({
+                                "type": "reasoning",
+                                "content": reasoning,
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            })
+                        response = answer  # Use only the answer portion
+                        
                 elif isinstance(llm_result, dict):
                     response = json.dumps(llm_result)
                 elif isinstance(llm_result, str):
@@ -708,6 +721,24 @@ The original task instruction:
                     return error, []
 
                 try:
+                    # If we got a reasoning tuple, handle both parts
+                    if isinstance(response, tuple):
+                        reasoning, response = response
+                        logger.info("Received reasoning from LLM")
+                        logger.debug(f"Reasoning content: {reasoning}")
+                        
+                        if callback:
+                            await callback({
+                                "type": "reasoning",
+                                "content": reasoning,
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            })
+                        
+                        # Log the answer portion
+                        logger.info("Processing answer portion for tool calls")
+                        logger.debug(f"Answer content: {response}")
+
                     response_data = parse_json_response(response)
 
                     # Validate basic response structure
@@ -1149,6 +1180,11 @@ The original task instruction:
                             callback(chunk, end=end, flush=flush)
                         else:
                             callback(chunk)
+            
+            # Add newline after stream is complete
+            if callback == print:
+                callback("\n", end="", flush=True)
+                
             return "".join(collected)
 
         return loop.run_until_complete(process())
