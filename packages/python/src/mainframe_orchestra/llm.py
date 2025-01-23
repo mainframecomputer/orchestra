@@ -171,6 +171,7 @@ def parse_json_response(response: str) -> dict:
             print_color(f"All JSON parsing attempts failed: {e}", "yellow")
             raise ValueError(f"Invalid JSON structure: {e}")
 
+
 class OpenaiModels:
     """
     Class containing methods for interacting with OpenAI models.
@@ -1357,3 +1358,220 @@ class GeminiModels:
     gemini_1_5_flash = custom_model("gemini-1.5-flash")
     gemini_1_5_flash_8b = custom_model("gemini-1.5-flash-8b")
     gemini_1_5_pro = custom_model("gemini-1.5-pro")
+
+
+class DeepseekModels:
+    """
+    Class containing methods for interacting with DeepSeek models.
+    """
+
+    @staticmethod
+    def _preprocess_reasoner_messages(messages: List[Dict[str, str]], require_json_output: bool = False) -> List[Dict[str, str]]:
+        """
+        Preprocess messages specifically for the DeepSeek Reasoner model:
+        - Combine successive user messages
+        - Combine successive assistant messages
+        - Handle JSON output requirements
+
+        Args:
+            messages (List[Dict[str, str]]): Original messages array
+            require_json_output (bool): Whether JSON output was requested
+
+        Returns:
+            List[Dict[str, str]]: Processed messages array
+        """
+        if require_json_output:
+            print_debug("\nWarning: JSON output format is not supported for the Reasoner model. Request will proceed without JSON formatting.")
+
+        if not messages:
+            return messages
+
+        processed = []
+        current_role = None
+        current_content = []
+
+        for msg in messages:
+            if msg["role"] == current_role:
+                # Same role as previous message, append content
+                current_content.append(msg["content"])
+            else:
+                # Different role, flush previous message if exists
+                if current_role:
+                    processed.append({
+                        "role": current_role,
+                        "content": "\n".join(current_content)
+                    })
+                # Start new message
+                current_role = msg["role"]
+                current_content = [msg["content"]]
+
+        # Don't forget to add the last message
+        if current_role:
+            processed.append({
+                "role": current_role,
+                "content": "\n".join(current_content)
+            })
+
+        if debug:
+            print_debug("Original messages for Reasoner:")
+            print_debug(json.dumps(messages, indent=2))
+            print_debug("Processed messages for Reasoner:")
+            print_debug(json.dumps(processed, indent=2))
+
+        return processed
+
+    @staticmethod
+    async def send_deepseek_request(
+        model: str = "",
+        image_data: Union[List[str], str, None] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        require_json_output: bool = False,
+        messages: Optional[List[Dict[str, str]]] = None,
+        stream: bool = False,
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+        """
+        Sends a request to DeepSeek models asynchronously.
+        For the Reasoner model, returns both reasoning and answer as a tuple
+        """
+        spinner = Halo(text="Sending request to DeepSeek...", spinner="dots")
+        spinner.start()
+
+        try:
+            # Validate and retrieve the DeepSeek API key
+            api_key = config.validate_api_key("DEEPSEEK_API_KEY")
+            if not api_key:
+                raise ValueError("DeepSeek API key not found in environment variables.")
+
+            # Create an AsyncOpenAI client
+            client = AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://api.deepseek.com/v1",
+            )
+
+            # Warn if image data was provided
+            if image_data:
+                print_error("Warning: DeepSeek API does not support image inputs. Images will be ignored.")
+
+            # Preprocess messages only for the reasoner model
+            if messages and model == "deepseek-reasoner":
+                messages = DeepseekModels._preprocess_reasoner_messages(messages, require_json_output)
+                # Remove JSON requirement for reasoner model
+                require_json_output = False
+
+            # Debug print
+            print_conditional_color(f"\n[LLM] DeepSeek ({model}) Request Messages:", "cyan")
+            if messages:
+                for msg in messages:
+                    print_api_request(json.dumps(msg, indent=2))
+
+            request_params = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+
+            # Add JSON output format if required (now only for non-reasoner models)
+            if require_json_output:
+                request_params["response_format"] = {"type": "json_object"}
+                if messages and messages[-1]["role"] == "user":
+                    messages[-1]["content"] += "\nPlease ensure the response is valid JSON."
+
+            if stream:
+                spinner.stop()  # Stop spinner before streaming
+
+                async def stream_generator():
+                    try:
+                        response = await client.chat.completions.create(stream=True, **request_params)
+                        in_reasoning = False
+                        async for chunk in response:
+                            if model == "deepseek-reasoner":
+                                if chunk.choices[0].delta.reasoning_content:
+                                    if not in_reasoning:
+                                        in_reasoning = True
+                                    content = chunk.choices[0].delta.reasoning_content
+                                    if debug:
+                                        print_debug(f"Streaming reasoning chunk: {content}")
+                                    yield content
+                                elif chunk.choices[0].delta.content:
+                                    if in_reasoning:
+                                        in_reasoning = False
+                                    content = chunk.choices[0].delta.content
+                                    if debug:
+                                        print_debug(f"Streaming answer chunk: {content}")
+                                    yield content
+                            else:
+                                if chunk.choices[0].delta.content:
+                                    yield chunk.choices[0].delta.content
+                    except Exception as e:
+                        print_error(f"An error occurred during streaming: {e}")
+                        yield ""
+
+                return stream_generator()
+
+            # Non-streaming logic
+            spinner.text = f"Waiting for {model} response..."
+            response = await client.chat.completions.create(**request_params)
+            
+            if model == "deepseek-reasoner":
+                reasoning = response.choices[0].message.reasoning_content
+                content = response.choices[0].message.content
+                # Instead of returning a formatted string, return the tuple
+                spinner.succeed("Request completed")
+
+                if verbosity:
+                    print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
+                    print_api_response(f"{reasoning}\n\n{content}")
+
+                return (reasoning, content), None  # Return tuple of (reasoning, answer)
+            else:
+                content = response.choices[0].message.content
+                spinner.succeed("Request completed")
+
+                if verbosity:
+                    print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
+                    print_api_response(content.strip())
+
+                if require_json_output:
+                    try:
+                        return json.dumps(parse_json_response(content)), None
+                    except ValueError as e:
+                        print_error(f"Failed to parse response as JSON: {e}")
+                        return "", e
+
+                return content.strip(), None
+
+        except Exception as e:
+            spinner.fail("Request failed")
+            print_error(f"Unexpected error: {str(e)}")
+            return "", e
+        finally:
+            if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
+
+    @staticmethod
+    def custom_model(model_name: str):
+        async def wrapper(
+            image_data: Union[List[str], str, None] = None,
+            temperature: float = 0.7,
+            max_tokens: int = 4000,
+            require_json_output: bool = False,
+            messages: Optional[List[Dict[str, str]]] = None,
+            stream: bool = False,
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+            return await DeepseekModels.send_deepseek_request(
+                model=model_name,
+                image_data=image_data,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                require_json_output=require_json_output,
+                messages=messages,
+                stream=stream,
+            )
+
+        return wrapper
+    
+    # Model-specific methods using custom_model
+    chat = custom_model("deepseek-chat")
+    reasoner = custom_model("deepseek-reasoner")
