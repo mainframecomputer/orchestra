@@ -6,6 +6,8 @@ Orchestra's orchestration module represents an approach to agent collaboration a
 
 At the heart of Orchestra's capabilities is the `Conduct` class, which provides a mechanism for enabling agents to delegate tasks to other agents through a tool-based architecture. The delegation capability is implemented as a tool that can be granted to any agent, allowing for flexible and dynamic orchestration patterns. This means that any agent with the conduct tool can coordinate and delegate tasks to other agents, creating nested orchestration patterns without relying on a central orchestrator.
 
+The `Conduct` and `Compose` tools are used to orchestrate and compose agents. Conduct is used to actually instruct and orchestrate a team of agents, while Compose is used in addition to the Conduct tool to enrich the orchestration process with additional complexity as a preprocessing step. It's important to note that Conduct is required for the orchestration process to work, while Compose is an optional additional tool that can be used to enrich the orchestration process.
+
 ### The Conduct Tool
 
 The `Conduct` tool serves as a factory, creating a specialized tool function that encapsulates the delegation logic. When added to an agent, this tool provides the ability to coordinate and delegate tasks to a set of eligible agents that were registered during the tool's creation. The implementation carefully manages the flow of information between agents, tracking dependencies, and ensuring proper message passing through event queues.
@@ -26,7 +28,7 @@ By implementing delegation as a tool, Orchestra allows for dynamic and hierarchi
 
 ## The Compose Tool
 
-The `Compose` tool represents a planning layer that works in harmony with the `Conduct` tool, embodying the principle of separation of concerns in multi-agent orchestration. Rather than immediately jumping into task delegation, the compose tool enables agents to first create comprehensive plans when dealing with complex objectives. This separation of planning from execution allows for more thoughtful and strategic approaches to multi-agent coordination.
+The `Compose` tool represents an optional planning layer that works in harmony with the core `Conduct` tool, embodying the principle of separation of concerns in multi-agent orchestration. While the Conduct tool is essential and sufficient for task delegation and orchestration, Compose provides an additional layer of sophistication for complex planning scenarios. This means that agents can perform delegation and orchestration with just the Conduct tool, but can optionally leverage the Compose tool when more elaborate planning is beneficial.
 
 When an agent possesses both compose and conduct tools, it can exercise judgment about when to employ each capability. For simple tasks, the agent might proceed directly to delegation through the conduct tool. However, when faced with complex objectives that require multiple agents and coordinated efforts, the agent can first utilize the compose tool to create a strategic plan.
 
