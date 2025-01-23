@@ -1,7 +1,6 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-from pydantic import BaseModel
-from pydantic.fields import Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Callable, Optional, Union, Dict, List, Any, Set, Tuple, AsyncIterator, Iterator
 from datetime import datetime, date
 import json
@@ -222,6 +221,16 @@ class Task(BaseModel):
 
     # Pydantic configuration
     model_config = {"arbitrary_types_allowed": True}
+
+    @field_validator('tools')
+    @classmethod
+    def validate_tools(cls, tools: Optional[Set[Callable]]) -> Optional[Set[Callable]]:
+        """Validate that all tools have docstrings."""
+        if tools:
+            for tool in tools:
+                if not tool.__doc__ or not tool.__doc__.strip():
+                    raise ValueError(f"Tool '{tool.__name__}' is missing a docstring or has an empty docstring. All tools must have documentation.")
+        return tools
 
     @classmethod
     def create(
