@@ -1287,8 +1287,8 @@ class GeminiModels:
                                     image_data = [image_data]
                                 for img in image_data:
                                     parts.append({"mime_type": "image/jpeg", "data": img})
-                                    parts.append(content)
-                                    response = chat.send_message(parts)
+                                parts.append(content)
+                                response = chat.send_message(parts)
                             else:
                                 response = chat.send_message(content)
                         elif role == "assistant":
