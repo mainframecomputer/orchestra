@@ -483,15 +483,27 @@ class Task(BaseModel):
             raise
 
     async def _direct_llm_call(
-        self, callback: Optional[Callable[[Dict[str, Any]], None]] = None
+        self,
+        callback: Optional[Callable] = None,
+        response_type: str = "final_response"
     ) -> Union[str, AsyncIterator[str]]:
-        """Execute a direct LLM call without tool usage, with fallback support."""
+        """Execute a direct LLM call without tool usage, with fallback support.
+        
+        Args:
+            callback: Optional callback function for progress updates
+            response_type: Type of response event to emit ("final_response" or "initial_response")
+            
+        Returns:
+            Union[str, AsyncIterator[str]]: Task result or stream
+            
+        Raises:
+            Exception: If LLM call fails after all fallback attempts
+        """
         logger = logging.getLogger("orchestra")
 
-        # Log messages in a single line
+        # Preserve existing logging
         logger.info("[LLM Request] Messages: " + json.dumps(self.messages, separators=(",", ":")))
 
-        # Define llm_params before logging
         llm_params = {
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
@@ -500,7 +512,6 @@ class Task(BaseModel):
             "stream": self.stream,
         }
 
-        # Log parameters in a single line
         logger.debug("[LLM Params] " + json.dumps(llm_params, separators=(",", ":")))
 
         # Convert single LLM to list for unified handling
@@ -510,35 +521,31 @@ class Task(BaseModel):
         for i, llm in enumerate(llms, 1):
             try:
                 if self.stream:
-
                     async def stream_wrapper():
                         async for chunk in await llm(messages=self.messages, **llm_params):
                             if callback:
-                                await callback(
-                                    {
-                                        "type": "stream",
-                                        "content": chunk,
-                                        "agent_id": self.agent_id,
-                                        "timestamp": datetime.now().isoformat(),
-                                    }
-                                )
+                                await callback({
+                                    "type": response_type,  # Use passed response_type
+                                    "content": chunk,
+                                    "agent_id": self.agent_id,
+                                    "timestamp": datetime.now().isoformat(),
+                                    "streaming": True
+                                })
                             yield chunk
-
                     return stream_wrapper()
 
                 # Non-streaming response
                 if callback and len(llms) > 1:
-                    await callback(
-                        {
-                            "type": "fallback_attempt",
-                            "content": f"Attempting LLM {i}/{len(llms)}",
-                            "agent_id": self.agent_id,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
+                    await callback({
+                        "type": "fallback_attempt",
+                        "content": f"Attempting LLM {i}/{len(llms)}",
+                        "agent_id": self.agent_id,
+                        "timestamp": datetime.now().isoformat(),
+                    })
 
                 llm_result = await llm(messages=self.messages, **llm_params)
 
+                # Handle tuple responses (reasoning, error checking)
                 if isinstance(llm_result, tuple) and len(llm_result) == 2:
                     response, error = llm_result
                     if error:
@@ -564,29 +571,25 @@ class Task(BaseModel):
                     raise ValueError(f"Unexpected result type from LLM: {type(llm_result)}")
 
                 if callback:
-                    await callback(
-                        {
-                            "type": "final_response",
-                            "content": response,
-                            "agent_id": self.agent_id,
-                            "timestamp": datetime.now().isoformat(),
-                            "attempt": i if len(llms) > 1 else None,
-                        }
-                    )
+                    await callback({
+                        "type": response_type,  # Use passed response_type
+                        "content": response,
+                        "agent_id": self.agent_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "attempt": i if len(llms) > 1 else None,
+                    })
                 return response.strip()
 
             except Exception as e:
                 last_error = e
                 logger.error(f"LLM attempt {i}/{len(llms)} failed: {str(e)}")
                 if callback:
-                    await callback(
-                        {
-                            "type": "error",
-                            "content": f"LLM attempt {i}/{len(llms)} failed: {str(e)}",
-                            "agent_id": self.agent_id,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
+                    await callback({
+                        "type": "error",
+                        "content": f"LLM attempt {i}/{len(llms)} failed: {str(e)}",
+                        "agent_id": self.agent_id,
+                        "timestamp": datetime.now().isoformat(),
+                    })
                 if i < len(llms):
                     continue
                 raise last_error
@@ -834,20 +837,22 @@ The original task instruction:
 
                         try:
                             if self.stream:
-                                # Always provide a callback wrapper, even if the original callback is None
                                 async def callback_wrapper(event):
                                     print(f"{event.get('content', '')}", end="", flush=True)
                                     if callback:
-                                        await callback(
-                                            {**event, "type": "initial_response", "streaming": True}
-                                        )
-
-                                initial_stream = await self._direct_llm_call(callback_wrapper)
+                                        await callback({**event, "type": "initial_response", "streaming": True})
+                                initial_stream = await self._direct_llm_call(
+                                    callback=callback_wrapper,
+                                    response_type="initial_response"
+                                )
                                 # Consume the stream
                                 async for chunk in initial_stream:
                                     pass  # The callback will handle the chunks
                             else:
-                                await self._direct_llm_call(callback)
+                                await self._direct_llm_call(
+                                    callback=callback,
+                                    response_type="initial_response"
+                                )
                         finally:
                             self.require_json_output = original_json_requirement
                             self.messages = original_messages
