@@ -1106,13 +1106,8 @@ The original task instruction:
 
             if self.require_json_output and not isinstance(result, (AsyncIterator, Iterator)):
                 try:
-                    if isinstance(result, str):
-                        json_match = re.search(r"\{.*?\}", result, re.DOTALL)
-                        if json_match:
-                            return json.loads(json_match.group(0))
-                    return json.loads(result)
-
-                except json.JSONDecodeError as e:
+                    return parse_json_response(result)
+                except ValueError as e:
                     return ValueError(f"Failed to parse JSON from LLM response: {result}\nError: {e}")
 
 
