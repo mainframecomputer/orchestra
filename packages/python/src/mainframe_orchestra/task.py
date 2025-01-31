@@ -253,6 +253,7 @@ class Task(BaseModel):
         stream: bool = False,
         initial_response: bool = False,
         tool_summaries: bool = False,
+        pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Union[str, Exception, AsyncIterator[str]]:
         """Create and execute a task. Handles both sync and async execution."""
 
@@ -286,6 +287,7 @@ class Task(BaseModel):
                     stream,
                     initial_response,
                     tool_summaries=tool_summaries,
+                    pre_execute=pre_execute,
                 )
 
             # Otherwise, run it synchronously
@@ -309,6 +311,7 @@ class Task(BaseModel):
                     stream,
                     initial_response,
                     tool_summaries=tool_summaries,
+                    pre_execute=pre_execute,
                 )
             )
             return result
@@ -606,9 +609,12 @@ class Task(BaseModel):
         try:
             MAX_ITERATIONS = 10
             MAX_IDENTICAL_CALLS = 3
+            MAX_CONDUCT_CALLS = 3
+
             iteration_count = 0
             tool_call_history = {}
-            tool_results = []  # Simple list to store results
+            tool_results = []
+            conduct_tool_count = 0  # Counter for consecutive conduct tool calls
 
             def hash_tool_call(tool_call: dict) -> str:
                 """Create a hash of a tool call to detect duplicates."""
@@ -1040,6 +1046,24 @@ The original task instruction:
                                 # Continue to the next iteration instead of returning
                                 continue
 
+                    # Check if this iteration only contains conduct_tool calls
+                    all_conduct_tools = all(
+                        tool_call.get("tool") == "conduct_tool" 
+                        for tool_call in response_data["tool_calls"]
+                    )
+                    
+                    if all_conduct_tools:
+                        conduct_tool_count += 1
+                        if conduct_tool_count >= MAX_CONDUCT_CALLS:
+                            error_msg = f"Maximum consecutive conduct tool calls ({MAX_CONDUCT_CALLS}) reached"
+                            logger.warning(f"{LogColors.YELLOW}[TOOL_LOOP] {error_msg}{LogColors.RESET}")
+                            if callback:
+                                await callback({"type": "error", "content": error_msg})
+                            return None, tool_results  # Return None to allow final response
+                    else:
+                        # Reset counter if we see other types of tool calls
+                        conduct_tool_count = 0
+
                 else:
                     logger.info("[TOOL_LOOP] No tool calls found in response")
                     return None, tool_results
@@ -1109,7 +1133,6 @@ The original task instruction:
                     return parse_json_response(result)
                 except ValueError as e:
                     return ValueError(f"Failed to parse JSON from LLM response: {result}\nError: {e}")
-
 
             return result
 
