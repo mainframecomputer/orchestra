@@ -19,10 +19,10 @@ class TaskInstruction(BaseModel):
 
 class Conduct:
     @staticmethod
-    def conduct_tool(*agents: Agent) -> Callable:
-        """Returns the conduct_tool function directly."""
+    def conduct_tool(*agents: Agent, tool_summaries: bool = False) -> Callable:
+        """Returns the conduct_tool function with configurable parameters."""
 
-        def create_conduct_tool(agents: List[Any]) -> Callable:
+        def create_conduct_tool(agents: List[Any], tool_summaries: bool) -> Callable:
             agent_map = {agent.agent_id: agent for agent in agents}
             agent_tools = {
                 agent.agent_id: [tool.__name__ for tool in getattr(agent, "tools", []) or []]
@@ -195,7 +195,8 @@ class Conduct:
                         instruction=instruction_text,
                         callback=nested_callback,
                         event_queue=event_queue,
-                        messages=messages,  # Pass messages instead of conversation_history
+                        messages=messages,
+                        tool_summaries=tool_summaries,
                     )
 
                     # Include context in the result
@@ -251,7 +252,7 @@ class Conduct:
             """
             return conduct_tool
 
-        return create_conduct_tool(list(agents))
+        return create_conduct_tool(list(agents), tool_summaries)
 
 
 class Compose:
