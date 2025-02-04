@@ -17,6 +17,8 @@ class Config(ABC):
     GROQ_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
     TOGETHERAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    DEEPSEEK_API_KEY: Optional[str] = None
 
     @classmethod
     def validate_api_key(cls, key_name: str) -> str:
@@ -45,6 +47,8 @@ class EnvConfig(Config):
         self.GROQ_API_KEY = os.getenv("GROQ_API_KEY")
         self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
         self.TOGETHERAI_API_KEY = os.getenv("TOGETHERAI_API_KEY")
+        self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+        self.DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
     @classmethod
     def validate_required_env_vars(cls) -> None:

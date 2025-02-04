@@ -9,26 +9,55 @@ import asyncio
 import logging
 
 # Configure logger for the orchestra package
-logger = logging.getLogger("orchestra")
+logger = logging.getLogger("mainframe-orchestra")
+
+# ANSI escape codes for colors
+class Colors:
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    
+    # Regular colors
+    GRAY = '\033[38;5;240m'
+    RED = '\033[31m'
+    GREEN = '\033[32m'
+    YELLOW = '\033[33m'
+    BLUE = '\033[34m'
+    MAGENTA = '\033[35m'
+    CYAN = '\033[36m'
+    WHITE = '\033[37m'
+    
+    # Bright colors
+    BRIGHT_RED = '\033[91m'
+    BRIGHT_GREEN = '\033[92m'
+    BRIGHT_YELLOW = '\033[93m'
+    BRIGHT_BLUE = '\033[94m'
+    BRIGHT_MAGENTA = '\033[95m'
+    BRIGHT_CYAN = '\033[96m'
+    BRIGHT_WHITE = '\033[97m'
 
 
-class LogColors:
-    """ANSI color codes for log formatting"""
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter with colors"""
+    
+    FORMATS = {
+        logging.DEBUG: Colors.GRAY + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET,
+        logging.INFO: Colors.GREEN + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET,
+        logging.WARNING: Colors.YELLOW + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET,
+        logging.ERROR: Colors.RED + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET,
+        logging.CRITICAL: Colors.BRIGHT_RED + Colors.BOLD + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET
+    }
 
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-    CYAN = "\033[96m"
-    BLUE = "\033[1;34m"
-    MAGENTA = "\033[1;35m"
-    GREEN = "\033[32m"
-    YELLOW = "\033[1;33m"
-    RED = "\033[1;31m"
-    GREY = "\033[90m"
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
 
-    @classmethod
-    def wrap(cls, color: str, text: str) -> str:
-        """Wrap text with color and reset codes"""
-        return f"{color}{text}{cls.RESET}"
+# Add handler if none exists
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(ColoredFormatter())
+    logger.addHandler(handler)
 
 
 def parse_json_response(response: str) -> dict:
@@ -122,45 +151,6 @@ def serialize_result(obj: Any) -> Union[str, Dict[str, Any], List[Any]]:
         except Exception as e:
             logger.error(f"str() fallback failed: {e}")
             return f"<Unserializable object of type {type(obj).__name__}>"
-
-
-def print_event(event: Dict[str, Any]) -> None:
-    """Pretty print events with color coding."""
-    if event["type"] == "tool_call" and "summary" in event:
-        logger.info(f"Tool call: {event['summary']}")
-        print(f"\n{LogColors.MAGENTA}🔧 {event['summary']}{LogColors.RESET}\n")
-    elif event["type"] == "tool_result":
-        logger.info(f"Tool result: {event['result']}")
-        print(f"{LogColors.GREEN}Result: {event['result']}{LogColors.RESET}\n")
-    elif event["type"] == "error":
-        logger.error(event["content"])
-        print(f"{LogColors.RED}Error: {event['content']}{LogColors.RESET}\n")
-    elif event["type"] == "warning":
-        logger.warning(event["content"])
-        print(f"{LogColors.YELLOW}Warning: {event['content']}{LogColors.RESET}\n")
-    elif event["type"] == "stream":
-        print(event["content"], end="", flush=True)
-    elif event["type"] == "initial_response":
-        if event.get("streaming"):
-            print(event["content"], end="", flush=True)
-        else:
-            logger.info("Initial response provided")
-            print(f"\n{LogColors.CYAN}Initial Response: {LogColors.RESET}{event['content']}\n")
-    elif event["type"] == "final_response":
-        if event.get("streaming"):
-            print(event["content"], end="", flush=True)
-        else:
-            logger.info("Final response provided")
-            print(f"\n{LogColors.CYAN}Final Response: {LogColors.RESET}{event['content']}\n")
-    elif event["type"] == "tool_status":
-        logger.info(event["content"])
-        print(f"\n{LogColors.CYAN}{event['content']}{LogColors.RESET}\n")
-    elif event["type"] == "fallback_attempt":
-        logger.warning(event["content"])
-        print(f"\n{LogColors.YELLOW}{event['content']}{LogColors.RESET}\n")
-    elif event["type"] == "end_tool_use":
-        logger.info("Tool loop completed")
-        print(f"\n{LogColors.CYAN}Tool Use: {LogColors.BLUE}Complete{LogColors.RESET}\n")
 
 
 class Task(BaseModel):
@@ -264,7 +254,7 @@ class Task(BaseModel):
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                print("[Task.create] Created new event loop")
+                logger.info("[Task.create] Created new event loop")
 
             # If we're already in an async context, return the coroutine
             if loop.is_running():
@@ -316,7 +306,7 @@ class Task(BaseModel):
             )
             return result
         except Exception as e:
-            print(f"[Task.create] Error during task creation: {str(e)}")
+            logger.error(f"[Task.create] Error during task creation: {str(e)}", exc_info=True)
             return e
 
     @classmethod
@@ -436,7 +426,7 @@ class Task(BaseModel):
             # Validate task data using Pydantic
             task = cls.model_validate(task_data)
 
-            logger.info(f"Created task for agent {task.agent_id or 'unknown'}")
+            logger.debug(f"Created task for agent {task.agent_id or 'unknown'}")
             return await task.execute(callback, pre_execute)
 
         except Exception as e:
@@ -468,7 +458,7 @@ class Task(BaseModel):
             if pre_execute:
                 await pre_execute({"agent_id": self.agent_id})
 
-            logger.info(f"Executing task for agent {self.agent_id or 'unknown'}")
+            logger.debug(f"Executing task for agent {self.agent_id or 'unknown'}")
 
             if self.tools:
                 tool_result, tool_history = await self._execute_tool_loop(callback, pre_execute)
@@ -502,10 +492,7 @@ class Task(BaseModel):
         Raises:
             Exception: If LLM call fails after all fallback attempts
         """
-        logger = logging.getLogger("orchestra")
-
-        # Preserve existing logging
-        logger.info("[LLM Request] Messages: " + json.dumps(self.messages, separators=(",", ":")))
+        logger = logging.getLogger("mainframe-orchestra")
 
         llm_params = {
             "temperature": self.temperature,
@@ -514,9 +501,7 @@ class Task(BaseModel):
             "require_json_output": self.require_json_output,
             "stream": self.stream,
         }
-
-        logger.debug("[LLM Params] " + json.dumps(llm_params, separators=(",", ":")))
-
+        
         # Convert single LLM to list for unified handling
         llms = [self.llm] if callable(self.llm) else list(self.llm)
         last_error = None
@@ -603,8 +588,8 @@ class Task(BaseModel):
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Tuple[Union[str, Exception], List[str]]:
         """Execute the tool loop with enhanced logging."""
-        logger = logging.getLogger("orchestra")
-        logger.info("Starting tool loop execution")
+        logger = logging.getLogger("mainframe-orchestra")
+        logger.debug("Starting tool loop execution")
 
         try:
             MAX_ITERATIONS = 10
@@ -680,7 +665,7 @@ Now respond with a JSON object that either requests tool calls or exits the tool
 """
 
             while iteration_count < MAX_ITERATIONS:
-                logger.info(f"Starting iteration {iteration_count + 1}/{MAX_ITERATIONS}")
+                logger.debug(f"Starting iteration {iteration_count + 1}/{MAX_ITERATIONS}")
                 iteration_count += 1
 
                 # Include tool results in context if we have any
@@ -733,7 +718,7 @@ The original task instruction:
                     # If we got a reasoning tuple, handle both parts
                     if isinstance(response, tuple):
                         reasoning, response = response
-                        logger.info("Received reasoning from LLM")
+                        logger.debug("Received reasoning from LLM")
                         logger.debug(f"Reasoning content: {reasoning}")
                         
                         if callback:
@@ -745,7 +730,6 @@ The original task instruction:
                             })
                         
                         # Log the answer portion
-                        logger.info("Processing answer portion for tool calls")
                         logger.debug(f"Answer content: {response}")
 
                     response_data = parse_json_response(response)
@@ -760,10 +744,9 @@ The original task instruction:
                     if not isinstance(response_data["tool_calls"], list):
                         raise ValueError("'tool_calls' must be an array")
 
-                    # Handle explicit completion
+                    # Handle explicit completionxw
                     if len(response_data["tool_calls"]) == 0:
-                        logger.info("Received explicit completion signal (empty tool_calls)")
-                        print(f"\n{LogColors.CYAN}Tool Use: {LogColors.BLUE}Loop Exited{LogColors.RESET}\n")
+                        logger.info("Received tool-use completion signal. Tool-use loop exited.")
                         if callback:
                             await callback(
                                 {
@@ -798,10 +781,8 @@ The original task instruction:
 
                 except (json.JSONDecodeError, ValueError) as e:
                     error_msg = f"Invalid tool response: {str(e)}"
-                    logger.error(f"{LogColors.RED}[TOOL_LOOP] {error_msg}{LogColors.RESET}")
-                    logger.error(
-                        f"Problematic response: {response[:200]}..."
-                    )  # Log truncated response
+                    logger.error(f"[TOOL_LOOP] {error_msg}")
+                    logger.error(f"Problematic response: {response[:400].replace('\n', ' ')}...")
 
                     if callback:
                         await callback(
@@ -828,7 +809,7 @@ The original task instruction:
                 if "tool_calls" in response_data:
                     # Check initial_response flag BEFORE executing any tools
                     if self.initial_response and iteration_count <= 1:
-                        logger.info("[TOOL_LOOP] Preparing initial response before executing tools")
+                        logger.info("Preparing initial response before executing tools")
 
                         initial_prompt = (
                             f"Given the task instruction: '{self.instruction}' and the planned tool calls: {json.dumps(response_data['tool_calls'], indent=2)}, "
@@ -840,20 +821,17 @@ The original task instruction:
                         self.messages = self.messages.copy()
                         self.messages.append({"role": "user", "content": initial_prompt})
                         self.require_json_output = False
-
                         try:
                             if self.stream:
                                 async def callback_wrapper(event):
-                                    print(f"{event.get('content', '')}", end="", flush=True)
                                     if callback:
                                         await callback({**event, "type": "initial_response", "streaming": True})
-                                initial_stream = await self._direct_llm_call(
+                                logger.debug("Starting stream output")
+                                await self._direct_llm_call(
                                     callback=callback_wrapper,
                                     response_type="initial_response"
                                 )
-                                # Consume the stream
-                                async for chunk in initial_stream:
-                                    pass  # The callback will handle the chunks
+                                logger.debug("Stream completed")
                             else:
                                 await self._direct_llm_call(
                                     callback=callback,
@@ -865,13 +843,10 @@ The original task instruction:
 
                     # Now proceed with tool execution
                     for tool_call in response_data["tool_calls"]:
-                        logger.info(f"Processing tool call: {tool_call.get('tool')}")
                         if isinstance(tool_call, dict):
                             tool_call_hash = hash_tool_call(tool_call)
                             call_count = tool_call_history.get(tool_call_hash, 0) + 1
                             tool_call_history[tool_call_hash] = call_count
-
-                            logger.debug(f"Tool call count for this configuration: {call_count}")
 
                             if call_count > MAX_IDENTICAL_CALLS:
                                 warning_msg = (
@@ -879,7 +854,7 @@ The original task instruction:
                                     f"Tool '{tool_call.get('tool')}' with parameters {tool_call.get('params')} "
                                     f"has been called {call_count} times. Maximum allowed repetitions is {MAX_IDENTICAL_CALLS}."
                                 )
-                                logger.warning(f"{LogColors.YELLOW}{warning_msg}{LogColors.RESET}")
+                                logger.warning(f"[TOOL_LOOP] {warning_msg}")
                                 if callback:
                                     await callback({"type": "warning", "content": warning_msg})
                                 # Instead of returning an error, return None to proceed to final task
@@ -892,11 +867,11 @@ The original task instruction:
                                 tool_name = tool_call.get("tool")
                                 tool_params = tool_call.get("params", {})
 
-                            logger.info(
-                                f"Executing tool: {tool_name} with parameters: {json.dumps(tool_params, separators=(',', ':'))}"
-                            )
+                            # Log the tool summary (if available and enabled)
+                            if self.tool_summaries and "summary" in tool_call:
+                                logger.info(f"Tool summary for [{tool_name}]: {tool_call['summary']}")
 
-                            # Send tool call event
+                            # Send tool call event if a callback is provided
                             if callback:
                                 callback_data = {
                                     "type": "tool_call",
@@ -905,28 +880,16 @@ The original task instruction:
                                     "agent_id": self.agent_id,
                                     "timestamp": datetime.now().isoformat(),
                                 }
-                                # Add summary if available and tool_summaries is enabled
+                                # Add summary to callback_data if available and tool summaries are enabled
                                 if self.tool_summaries and "summary" in tool_call:
                                     callback_data["summary"] = tool_call["summary"]
                                 await callback(callback_data)
-
-                            # Add colored output for tool call
-                            print(f"\n{LogColors.CYAN}Tool Use: {LogColors.BLUE}{tool_name}")
-                            # Add summary to console output
-                            if self.tool_summaries and "summary" in tool_call:
-                                print(
-                                    f"{LogColors.CYAN}Summary: {LogColors.MAGENTA}{tool_call['summary']}"
-                                )
-                            print(f"{LogColors.CYAN}Parameters:")
-                            for key, value in tool_params.items():
-                                print(f"  {LogColors.CYAN}{key}: {LogColors.MAGENTA}{value}")
-                            print(f"{LogColors.RESET}")  # Reset color at the end
 
                             # Execute tool and store result
                             tools_dict = {func.__name__: func for func in self.tools}
                             if tool_name not in tools_dict:
                                 error_msg = f"Unknown tool: {tool_name}"
-                                logger.error(f"{LogColors.RED}{error_msg}{LogColors.RESET}")
+                                logger.error(f"{error_msg}")
                                 if callback:
                                     await callback({"type": "error", "content": error_msg})
                                 return Exception(error_msg), []
@@ -939,9 +902,7 @@ The original task instruction:
                                 special_params = {}
 
                                 if tool_name == "conduct_tool":
-                                    logger.info(
-                                        "[TOOL_LOOP] Setting up conduct_tool specific parameters"
-                                    )
+
                                     # Store callback-related parameters separately
                                     special_params.update({
                                         "callback": callback,
@@ -951,13 +912,11 @@ The original task instruction:
                                     })
 
                                 # Log only the serializable parameters
-                                logger.info(
-                                    f"Executing tool: {tool_name} with parameters: {json.dumps(serializable_params, separators=(',', ':'))}"
-                                )
+                                logger.info(f"Executing tool: [{tool_name}] with parameters: {json.dumps(serializable_params, separators=(',', ':'))}")
 
                                 if asyncio.iscoroutinefunction(tool_func):
                                     logger.info(
-                                        f"{LogColors.CYAN}Executing async tool: {tool_name}{LogColors.RESET}"
+                                        f"Executing async tool: {tool_name}"
                                     )
                                     # Combine the parameters only for execution
                                     execution_params = {**serializable_params, **special_params}
@@ -989,17 +948,6 @@ The original task instruction:
                                     else str(result)
                                 )
 
-                                # Add result snippet output
-                                result_snippet = (
-                                    result_str[:400] + "..."
-                                    if len(result_str) > 400
-                                    else result_str
-                                )
-                                print(
-                                    f"{LogColors.CYAN}Result: {LogColors.GREEN}{result_snippet}{LogColors.RESET}"
-                                )
-                                print()
-
                                 if callback:
                                     await callback(
                                         {
@@ -1022,14 +970,14 @@ The original task instruction:
                                 )  # Using existing tool_results list
 
                                 # After tool execution
-                                logger.info(
+                                logger.debug(
                                     f"Result from '{tool_name}': {json.dumps(result, separators=(',', ':'))}"
                                 )
 
                             except Exception as e:
                                 error_msg = f"Tool execution error for {tool_name}: {str(e)}"
                                 logger.error(
-                                    f"{LogColors.RED}[TOOL_LOOP] {error_msg}{LogColors.RESET}"
+                                    f"[TOOL_LOOP] {error_msg}"
                                 )
                                 if callback:
                                     await callback({"type": "error", "content": error_msg})
@@ -1056,7 +1004,7 @@ The original task instruction:
                         conduct_tool_count += 1
                         if conduct_tool_count >= MAX_CONDUCT_CALLS:
                             error_msg = f"Maximum consecutive conduct tool calls ({MAX_CONDUCT_CALLS}) reached"
-                            logger.warning(f"{LogColors.YELLOW}[TOOL_LOOP] {error_msg}{LogColors.RESET}")
+                            logger.warning(f"[TOOL_LOOP] {error_msg}")
                             if callback:
                                 await callback({"type": "error", "content": error_msg})
                             return None, tool_results  # Return None to allow final response
@@ -1072,14 +1020,14 @@ The original task instruction:
             # Check for max iterations reached
             if iteration_count >= MAX_ITERATIONS:
                 error_msg = f"Maximum tool loop iterations ({MAX_ITERATIONS}) reached"
-                logger.error(f"{LogColors.RED}[TOOL_LOOP] {error_msg}{LogColors.RESET}")
+                logger.error(f"[TOOL_LOOP] {error_msg}")
                 if callback:
                     await callback({"type": "error", "content": error_msg})
                 return Exception(error_msg), tool_results
 
         except Exception as e:
             error_msg = f"Error in tool loop: {str(e)}"
-            logger.error(f"{LogColors.RED}{error_msg}{LogColors.RESET}")
+            logger.error(f"[TOOL_LOOP] {error_msg}")
             if callback:
                 await callback({"type": "error", "content": error_msg})
             return e, []
@@ -1088,14 +1036,8 @@ The original task instruction:
         self, tool_results: List[str], callback: Optional[Callable[[Dict[str, Any]], None]] = None
     ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """Execute the final task with tool results."""
-        logger = logging.getLogger("orchestra")
-        logger.info("Starting final task execution")
+        logger = logging.getLogger("mainframe-orchestra")
 
-        # Log tool results in a single line
-        for idx, result in enumerate(tool_results):
-            logger.info(f"[Tool Result {idx+1}] " + json.dumps(result, separators=(",", ":")))
-
-        # Build content based on whether we have tool results
         content_parts = []
 
         if tool_results:
@@ -1212,119 +1154,3 @@ The original task instruction:
 
         return loop.run_until_complete(process())
 
-
-def configure_logging(
-    level: str = "INFO",
-    log_file: Optional[str] = None,
-    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-) -> None:
-    """Configure logging for the orchestra package"""
-    logging_level = getattr(logging, level.upper())
-
-    # Create logger
-    logger = logging.getLogger("orchestra")
-    logger.setLevel(logging_level)
-
-    # Remove any existing handlers
-    logger.handlers = []
-
-    # Create formatter with more detailed format
-    detailed_format = "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s - %(message)s"
-    formatter = logging.Formatter(detailed_format)
-
-    # Always add console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging_level)
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
-    # Add file handler if specified
-    if log_file:
-        file_handler = logging.FileHandler(log_file, mode="w")
-        file_handler.setLevel(logging_level)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-
-    # Log initial configuration
-    logger.info(f"Logging configured: level={level}, file={log_file}")
-    logger.debug("Debug logging is enabled")
-
-    # Log Python version and environment info
-    import sys
-
-    logger.debug(f"Python version: {sys.version}")
-    logger.debug(f"Platform: {sys.platform}")
-
-
-def default_logger(event: Dict[str, Any]) -> None:
-    """Default logging callback handler for Task events with colored output."""
-    logger = logging.getLogger("orchestra")
-
-    # Log the raw event at debug level
-    logger.debug(f"Received event: {json.dumps(event, indent=2)}")
-
-    if event["type"] == "tool_call":
-        summary = event.get("summary", "No summary provided")
-        logger.info(f"Tool Call - {event['tool']}: {summary}")
-        logger.debug(f"Tool parameters: {json.dumps(event.get('params', {}), indent=2)}")
-
-        if "summary" in event:
-            logger.info(f"Tool Call Summary: {event['summary']}")
-            print(f"\n{LogColors.MAGENTA}Tool Call: {event['summary']}{LogColors.RESET}")
-        logger.info(f"Tool Name: {event['tool']}")
-        logger.info(f"Tool Parameters: {json.dumps(event.get('params', {}), indent=2)}")
-        print(f"{LogColors.CYAN}Tool: {LogColors.BLUE}{event['tool']}")
-        print(
-            f"{LogColors.CYAN}Parameters: {LogColors.MAGENTA}{json.dumps(event.get('params', {}), indent=2)}{LogColors.RESET}"
-        )
-
-    elif event["type"] == "tool_result":
-        logger.info(f"Tool Result: {event['result']}")  # Log entire tool result
-        logger.debug(f"Full tool result: {event['result']}")
-        print(f"{LogColors.GREEN}Result: {event['result']}{LogColors.RESET}\n")
-
-    elif event["type"] == "error":
-        logger.error(f"Error event: {event['content']}")
-        print(f"{LogColors.RED}Error: {event['content']}{LogColors.RESET}\n")
-
-    elif event["type"] == "warning":
-        logger.warning(f"Warning event: {event['content']}")
-        print(f"{LogColors.YELLOW}Warning: {event['content']}{LogColors.RESET}\n")
-
-    elif event["type"] == "stream":
-        logger.debug(f"Stream content: {event['content']}")
-        print(event["content"], end="", flush=True)
-
-    elif event["type"] == "initial_response":
-        if event.get("streaming"):
-            logger.debug(f"Streaming initial response: {event['content']}")
-            print(event["content"], end="", flush=True)
-        else:
-            logger.info("Initial response provided")
-            logger.debug(f"Initial response content: {event['content']}")
-            print(f"\n{LogColors.CYAN}Initial Response: {LogColors.RESET}{event['content']}\n")
-
-    elif event["type"] == "final_response":
-        if event.get("streaming"):
-            logger.debug(f"Streaming final response: {event['content']}")
-            print(event["content"], end="", flush=True)
-        else:
-            logger.info("Final response provided")
-            logger.debug(f"Final response content: {event['content']}")
-            print(f"\n{LogColors.CYAN}Final Response: {LogColors.RESET}{event['content']}\n")
-
-    elif event["type"] == "tool_status":
-        logger.info(f"Tool status: {event['content']}")
-        print(f"\n{LogColors.CYAN}{event['content']}{LogColors.RESET}\n")
-
-    elif event["type"] == "fallback_attempt":
-        logger.warning(f"Fallback attempt: {event['content']}")
-        print(f"\n{LogColors.YELLOW}{event['content']}{LogColors.RESET}\n")
-
-    elif event["type"] == "end_tool_use":
-        logger.info("Tool loop completed")
-        print(f"\n{LogColors.CYAN}Tool Use: {LogColors.BLUE}Complete{LogColors.RESET}\n")
-
-    else:
-        logger.warning(f"Unknown event type received: {event['type']}")
-        logger.debug(f"Full unknown event: {json.dumps(event, indent=2)}")

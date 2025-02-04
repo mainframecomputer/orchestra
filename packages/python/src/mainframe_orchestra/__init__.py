@@ -5,7 +5,7 @@ Mainframe Orchestra: a Python framework for building and orchestrating multi-age
 
 __version__ = "0.0.19"
 
-from .task import Task, configure_logging, LogColors, default_logger
+from .task import Task
 from .agent import Agent
 from .config import Config
 from .orchestration import Conduct, Compose, TaskInstruction
@@ -95,10 +95,7 @@ __all__ = [
     "config",
     "Utils",
     "set_verbosity",
-    # Logging
-    "configure_logging",
-    "LogColors",
-    "default_logger",
+
     # LLM Provider Models
     "OpenaiModels",
     "AnthropicModels",

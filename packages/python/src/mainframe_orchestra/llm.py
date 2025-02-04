@@ -5,6 +5,7 @@ import time
 import random
 import re
 import json
+import logging
 from typing import List, Dict, Union, Tuple, Optional, Iterator, AsyncGenerator
 from halo import Halo
 from anthropic import (
@@ -43,6 +44,8 @@ except ImportError:
             self.GROQ_API_KEY = os.getenv("GROQ_API_KEY")
             self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
             self.TOGETHERAI_API_KEY = os.getenv("TOGETHERAI_API_KEY")
+            self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+            self.DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
     config = EnvConfig()
 
@@ -55,17 +58,37 @@ MAX_RETRIES = 3
 BASE_DELAY = 1
 MAX_DELAY = 10
 
-# Define color codes
-COLORS = {
-    "cyan": "\033[96m",
-    "blue": "\033[94m",
-    "light_blue": "\033[38;5;39m",
-    "green": "\033[92m",
-    "yellow": "\033[93m",
-    "red": "\033[91m",
-    "reset": "\033[0m",
-}
+# Setup logging
+logger = logging.getLogger("mainframe-orchestra")
+log_level = os.getenv("ORCHESTRA_LOG_LEVEL", "INFO").upper()
+logger.setLevel(getattr(logging, log_level, logging.INFO))
 
+# Configure third-party loggers
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
+logging.getLogger("anthropic").setLevel(logging.WARNING)
+logging.getLogger("groq").setLevel(logging.WARNING)
+logging.getLogger("groq._base_client").setLevel(logging.WARNING)
+
+# Ensure we have at least a console handler if none exists
+if not logger.handlers:
+    # Console handler - keep it clean for user output
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    logger.addHandler(console_handler)
+
+    # Setup file logging if ORCHESTRA_LOG_FILE is set
+    log_file = os.getenv("ORCHESTRA_LOG_FILE")
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        file_handler.setLevel(logging.DEBUG)  # File logs capture everything
+        logger.addHandler(file_handler)
 
 def set_verbosity(value: Union[str, bool, int]):
     global verbosity, debug
@@ -74,64 +97,32 @@ def set_verbosity(value: Union[str, bool, int]):
         if value in ["debug", "2"]:
             verbosity = True
             debug = True
+            logger.setLevel(logging.DEBUG)
         elif value in ["true", "1"]:
             verbosity = True
             debug = False
+            logger.setLevel(logging.INFO)
         else:
             verbosity = False
             debug = False
+            logger.setLevel(logging.WARNING)
     elif isinstance(value, bool):
         verbosity = value
         debug = False
+        logger.setLevel(logging.INFO if value else logging.WARNING)
     elif isinstance(value, int):
         if value == 2:
             verbosity = True
             debug = True
+            logger.setLevel(logging.DEBUG)
         elif value == 1:
             verbosity = True
             debug = False
+            logger.setLevel(logging.INFO)
         else:
             verbosity = False
             debug = False
-
-
-def print_color(message, color):
-    print(f"{COLORS.get(color, '')}{message}{COLORS['reset']}")
-
-
-def print_conditional_color(message, color):
-    if verbosity:
-        print_color(message, color)
-
-
-def print_api_request(message):
-    if verbosity:
-        print_color(message, "green")
-
-
-def print_model_request(provider: str, model: str):
-    if verbosity:
-        print_color(f"Sending request to {model} from {provider}", "cyan")
-
-
-def print_label(message: str):
-    if verbosity:
-        print_color(message, "cyan")
-
-
-def print_api_response(message):
-    if verbosity:
-        print_color(message, "blue")
-
-
-def print_debug(message):
-    if debug:
-        print_color(message, "yellow")
-
-
-def print_error(message):
-    print_color(message, "red")
-
+            logger.setLevel(logging.WARNING)
 
 def parse_json_response(response: str) -> dict:
     """
@@ -168,7 +159,7 @@ def parse_json_response(response: str) -> dict:
         try:
             return json.loads(cleaved_json)
         except json.JSONDecodeError as e:
-            print_color(f"All JSON parsing attempts failed: {e}", "yellow")
+            logger.warning(f"All JSON parsing attempts failed: {e}")
             raise ValueError(f"Invalid JSON structure: {e}")
 
 
@@ -248,9 +239,7 @@ class OpenaiModels:
 
         # Add check for non-streaming models (currently only o1 models) at the start
         if stream and model in ["o1-mini", "o1-preview"]:
-            print_error(
-                f"Streaming is not supported for {model}. Falling back to non-streaming request."
-            )
+            logger.error(f"Streaming is not supported for {model}. Falling back to non-streaming request.")
             stream = False
 
         spinner = Halo(text="Sending request to OpenAI...", spinner="dots")
@@ -261,9 +250,6 @@ class OpenaiModels:
             client = AsyncOpenAI(api_key=api_key)
             if not client.api_key:
                 raise ValueError("OpenAI API key not found in environment variables.")
-
-            # Debug print
-            print_conditional_color(f"\n[LLM] OpenAI ({model}) Request Messages:", "cyan")
 
             # Handle all o1-specific modifications
             if model in ["o1-mini", "o1-preview"]:
@@ -283,42 +269,41 @@ class OpenaiModels:
                 if require_json_output:
                     request_params["response_format"] = {"type": "json_object"}
 
-            # Print final messages for debugging
-            for msg in messages:
-                print_api_request(json.dumps(msg, indent=2))
+            # Log all request details including parameters
+            logger.debug(f"[LLM] OpenAI ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
 
             if stream:
                 spinner.stop()  # Stop spinner before streaming
 
                 async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started")
                     try:
                         stream_params = {**request_params, "stream": True}
                         response = await client.chat.completions.create(**stream_params)
                         async for chunk in response:
                             if chunk.choices[0].delta.content:
                                 content = chunk.choices[0].delta.content
-                                if debug:
-                                    print_debug(f"Streaming chunk: {content}")
+                                full_message += content
                                 yield content
+                        logger.debug(f"Stream complete: {full_message}")
                     except OpenAIAuthenticationError as e:
-                        print_error(
-                            f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}"
-                        )
+                        logger.error(f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}")
                         yield ""
                     except OpenAIBadRequestError as e:
-                        print_error(f"Invalid request parameters: {str(e)}")
+                        logger.error(f"Invalid request parameters: {str(e)}")
                         yield ""
                     except (OpenAIConnectionError, OpenAITimeoutError) as e:
-                        print_error(f"Connection error: {str(e)}")
+                        logger.error(f"Connection error: {str(e)}")
                         yield ""
                     except OpenAIRateLimitError as e:
-                        print_error(f"Rate limit exceeded: {str(e)}")
+                        logger.error(f"Rate limit exceeded: {str(e)}")
                         yield ""
                     except OpenAIAPIError as e:
-                        print_error(f"OpenAI API error: {str(e)}")
+                        logger.error(f"OpenAI API error: {str(e)}")
                         yield ""
                     except Exception as e:
-                        print_error(f"An unexpected error occurred during streaming: {e}")
+                        logger.error(f"An unexpected error occurred during streaming: {e}")
                         yield ""
 
                 return stream_generator()
@@ -330,34 +315,38 @@ class OpenaiModels:
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
 
-            if verbosity:
-                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                print_api_response(content.strip())
-            return content.strip(), None
+            try:
+                # Attempt to parse the API response as JSON and reformat it as compact, single-line JSON.
+                compact_response = json.dumps(json.loads(content.strip()), separators=(',', ':'))
+            except ValueError:
+                # If it's not JSON, collapse any extra whitespace (including newlines) into a single space.
+                compact_response = " ".join(content.strip().split())
+            logger.debug(f"API Response: {compact_response}")
+            return compact_response, None
 
         except OpenAIAuthenticationError as e:
             spinner.fail("Authentication failed")
-            print_error(f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}")
+            logger.error(f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}")
             return "", e
         except OpenAIBadRequestError as e:
             spinner.fail("Invalid request")
-            print_error(f"Invalid request parameters: {str(e)}")
+            logger.error(f"Invalid request parameters: {str(e)}")
             return "", e
         except (OpenAIConnectionError, OpenAITimeoutError) as e:
             spinner.fail("Connection failed")
-            print_error(f"Connection error: {str(e)}")
+            logger.error(f"Connection error: {str(e)}")
             return "", e
         except OpenAIRateLimitError as e:
             spinner.fail("Rate limit exceeded")
-            print_error(f"Rate limit exceeded: {str(e)}")
+            logger.error(f"Rate limit exceeded: {str(e)}")
             return "", e
         except OpenAIAPIError as e:
             spinner.fail("API Error")
-            print_error(f"OpenAI API error: {str(e)}")
+            logger.error(f"OpenAI API error: {str(e)}")
             return "", e
         except Exception as e:
             spinner.fail("Request failed")
-            print_error(f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}")
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
@@ -409,8 +398,8 @@ class AnthropicModels:
         require_json_output: bool = False,
         messages: Optional[List[Dict[str, str]]] = None,
         stop_sequences: Optional[List[str]] = None,
-        stream: bool = False,  # Add stream parameter
-    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:  # Update return type
+        stream: bool = False,
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
         Sends an asynchronous request to an Anthropic model using the Messages API format.
         """
@@ -433,7 +422,7 @@ class AnthropicModels:
                     role = msg["role"]
                     content = msg["content"]
 
-                    # Handle system messages separately - ISSUE: Currently overwriting with parameter
+                    # Handle system messages separately
                     if role == "system":
                         system_message = content  # Store the system message from messages
                     elif role == "user":
@@ -478,23 +467,16 @@ class AnthropicModels:
                             },
                         }
                     )
-
-            # Debug print the request parameters with colors
-            if verbosity:
-                print_conditional_color(f"\n[LLM] Anthropic ({model}) Request Messages:", "cyan")
-                print_api_request(f"\nsystem_message: {system_message}")  # Print system message with newline
-                print_api_request("  messages:")
-                for msg in anthropic_messages:
-                    print_api_request(f"    {msg}")
-                print_api_request(f"  temperature: {temperature}")
-                print_api_request(f"  max_tokens: {max_tokens}")
-                print_api_request(f"  stop_sequences: {stop_sequences if stop_sequences else None}")
+            # Log request details
+            logger.debug(f"[LLM] Anthropic ({model}) Request: {json.dumps({'system_message': system_message, 'messages': anthropic_messages, 'temperature': temperature, 'max_tokens': max_tokens, 'stop_sequences': stop_sequences}, separators=(',', ':'))}")
 
             # Handle streaming
             if stream:
                 spinner.stop()  # Stop spinner before streaming
 
                 async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started")
                     try:
                         response = await client.messages.create(
                             model=model,
@@ -506,41 +488,38 @@ class AnthropicModels:
                             stream=True,
                         )
                         async for chunk in response:
-                            # Handle different event types according to Anthropic's streaming format
                             if chunk.type == "content_block_delta":
                                 if chunk.delta.type == "text_delta":
                                     content = chunk.delta.text
-                                    if debug:
-                                        print_debug(f"Streaming chunk: {content}")
+                                    full_message += content
                                     yield content
                             elif chunk.type == "message_delta":
-                                # Handle message completion
+                                # When a stop_reason is provided, log it without per-chunk verbosity
                                 if chunk.delta.stop_reason:
-                                    if debug:
-                                        print_debug(f"Stream completed: {chunk.delta.stop_reason}")
+                                    logger.debug(f"Message delta stop reason: {chunk.delta.stop_reason}")
                             elif chunk.type == "error":
-                                print_error(f"Stream error: {chunk.error}")
+                                logger.error(f"Stream error: {chunk.error}")
                                 break
-
+                        logger.debug("Stream complete")
+                        logger.debug(f"Final message: {full_message}")
                     except (AnthropicConnectionError, AnthropicTimeoutError) as e:
-                        print_error(f"Connection error during streaming: {str(e)}")
+                        logger.error(f"Connection error during streaming: {str(e)}", exc_info=True)
                         yield ""
                     except AnthropicRateLimitError as e:
-                        print_error(f"Rate limit exceeded during streaming: {str(e)}")
+                        logger.error(f"Rate limit exceeded during streaming: {str(e)}", exc_info=True)
                         yield ""
                     except AnthropicStatusError as e:
-                        print_error(f"API status error during streaming: {str(e)}")
+                        logger.error(f"API status error during streaming: {str(e)}", exc_info=True)
                         yield ""
                     except AnthropicResponseValidationError as e:
-                        print_error(f"Invalid response format during streaming: {str(e)}")
+                        logger.error(f"Invalid response format during streaming: {str(e)}", exc_info=True)
                         yield ""
                     except ValueError as e:
-                        print_error(f"Configuration error during streaming: {str(e)}")
+                        logger.error(f"Configuration error during streaming: {str(e)}", exc_info=True)
                         yield ""
                     except Exception as e:
-                        print_error(f"An unexpected error occurred during streaming: {e}")
+                        logger.error(f"An unexpected error occurred during streaming: {e}", exc_info=True)
                         yield ""
-
                 return stream_generator()
 
             # Non-streaming logic
@@ -556,36 +535,33 @@ class AnthropicModels:
 
             content = response.content[0].text if response.content else ""
             spinner.succeed("Request completed")
-
-            if verbosity:
-                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                print_api_response(content.strip())
-
+            # For non-JSON responses, keep original formatting but make single line
+            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
 
         except (AnthropicConnectionError, AnthropicTimeoutError) as e:
             spinner.fail("Connection failed")
-            print_error(f"Connection error: {str(e)}")
+            logger.error(f"Connection error: {str(e)}", exc_info=True)
             return "", e
         except AnthropicRateLimitError as e:
             spinner.fail("Rate limit exceeded")
-            print_error(f"Rate limit exceeded: {str(e)}")
+            logger.error(f"Rate limit exceeded: {str(e)}", exc_info=True)
             return "", e
         except AnthropicStatusError as e:
             spinner.fail("API Status Error")
-            print_error(f"API Status Error: {str(e)}")
+            logger.error(f"API Status Error: {str(e)}", exc_info=True)
             return "", e
         except AnthropicResponseValidationError as e:
             spinner.fail("Invalid Response Format")
-            print_error(f"Invalid response format: {str(e)}")
+            logger.error(f"Invalid response format: {str(e)}", exc_info=True)
             return "", e
         except ValueError as e:
             spinner.fail("Configuration Error")
-            print_error(f"Configuration error: {str(e)}")
+            logger.error(f"Configuration error: {str(e)}", exc_info=True)
             return "", e
         except Exception as e:
             spinner.fail("Request failed")
-            print_error(f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
@@ -618,10 +594,10 @@ class AnthropicModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    opus = custom_model("claude-3-opus-latest")  # or claude-3-opus-20240229
-    sonnet = custom_model("claude-3-sonnet-20240229")  # or claude-3-sonnet-20240229
+    opus = custom_model("claude-3-opus-latest")
+    sonnet = custom_model("claude-3-sonnet-20240229")
     haiku = custom_model("claude-3-haiku-20240307")
-    sonnet_3_5 = custom_model("claude-3-5-sonnet-latest")  # or claude-3-5-sonnet-20241022
+    sonnet_3_5 = custom_model("claude-3-5-sonnet-latest")
     haiku_3_5 = custom_model("claude-3-5-haiku-latest")
 
 
@@ -653,16 +629,15 @@ class OpenrouterModels:
             if not client.api_key:
                 raise ValueError("OpenRouter API key not found in environment variables.")
 
-            # Debug print
-            print_conditional_color(f"\n[LLM] OpenRouter ({model}) Request Messages:", "cyan")
-            for msg in messages:
-                print_api_request(json.dumps(msg, indent=2))
+            # Log request details including parameters
+            logger.debug(f"[LLM] OpenRouter ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
 
             if stream:
                 spinner.stop()  # Stop spinner before streaming
-                collected_content = []
 
                 async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started")
                     try:
                         response = await client.chat.completions.create(
                             model=model,
@@ -670,25 +645,18 @@ class OpenrouterModels:
                             temperature=temperature,
                             max_tokens=max_tokens,
                             stream=True,
-                            response_format={"type": "json_object"}
-                            if require_json_output
-                            else None,
+                            response_format={"type": "json_object"} if require_json_output else None,
                         )
                         async for chunk in response:
                             if chunk.choices[0].delta.content:
                                 content = chunk.choices[0].delta.content
-                                collected_content.append(content)
-                                if debug:
-                                    print_debug(f"Streaming chunk: {content}")
+                                full_message += content
                                 yield content
-                        
-                        if verbosity:
-                            print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                            print_api_response("".join(collected_content))
+                        logger.debug("Stream complete")
+                        logger.debug(f"Full message: {full_message}")
                         yield "\n"
-
                     except Exception as e:
-                        print_error(f"An error occurred during streaming: {e}")
+                        logger.error(f"An error occurred during streaming: {e}", exc_info=True)
                         yield "\n"
 
                 return stream_generator()
@@ -706,14 +674,23 @@ class OpenrouterModels:
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
 
-            if verbosity:
-                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                print_api_response(content.strip())
+            # Compress the response to single line if it's JSON
+            if require_json_output:
+                try:
+                    json_response = parse_json_response(content)
+                    compressed_content = json.dumps(json_response, separators=(',', ':'))
+                    logger.debug(f"[LLM] API Response: {compressed_content}")
+                    return compressed_content, None
+                except ValueError as e:
+                    return "", e
+            
+            # For non-JSON responses, keep original formatting but make single line
+            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
 
         except Exception as e:
             spinner.fail("Request failed")
-            print_error(f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
@@ -802,12 +779,9 @@ class OllamaModels:
         """
         Updated to handle messages array format compatible with Task class.
         """
-        print_model_request("Ollama", model)
-        if debug:
-            print_debug("Entering call_ollama function")
-            print_debug(
-                f"Parameters: model={model}, messages={messages}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
-            )
+        logger.debug(
+            f"Parameters: model={model}, messages={messages}, image_data={image_data}, temperature={temperature}, max_tokens={max_tokens}, require_json_output={require_json_output}"
+        )
 
         spinner = Halo(text="Sending request to Ollama...", spinner="dots")
         spinner.start()
@@ -819,7 +793,7 @@ class OllamaModels:
 
             # Handle image data by appending to messages
             if image_data:
-                print_debug("Processing image data")
+                logger.debug("Processing image data")
                 if isinstance(image_data, str):
                     image_data = [image_data]
 
@@ -836,19 +810,21 @@ class OllamaModels:
                     image_content = "\n".join(f"<image>{img}</image>" for img in image_data)
                     messages.append({"role": "user", "content": image_content})
 
-            print_debug(f"Final messages structure: {messages}")
+            logger.debug(f"Final messages structure: {messages}")
 
             for attempt in range(MAX_RETRIES):
-                print_debug(f"Attempt {attempt + 1}/{MAX_RETRIES}")
+                logger.debug(f"Attempt {attempt + 1}/{MAX_RETRIES}")
                 try:
                     client = ollama.Client()
-                    print_conditional_color(f"\n[LLM] Ollama ({model}) Request Messages:", "cyan")
-                    for msg in messages:
-                        print_api_request(json.dumps(msg, indent=2))
+
+                    logger.debug(f"[LLM] Ollama ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
 
                     if stream:
                         spinner.stop()  # Stop spinner before streaming
+
                         async def stream_generator():
+                            full_message = ""
+                            logger.debug("Stream started")
                             try:
                                 response = client.chat(
                                     model=model,
@@ -861,12 +837,12 @@ class OllamaModels:
                                 for chunk in response:
                                     if chunk and "message" in chunk and "content" in chunk["message"]:
                                         content = chunk["message"]["content"]
-                                        if debug:
-                                            print_debug(f"Streaming chunk: {content}")
+                                        full_message += content
                                         yield content
-                                print("")  
+                                logger.debug("Stream completed")
+                                logger.debug(f"Final streamed message: {full_message}")
                             except Exception as e:
-                                print_error(f"Streaming error: {str(e)}")
+                                logger.error(f"Streaming error: {str(e)}")
                                 yield ""
 
                         return stream_generator()
@@ -882,9 +858,7 @@ class OllamaModels:
                     response_text = response["message"]["content"]
 
                     # verbosity printing before json parsing
-                    if verbosity:
-                        print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                        print_api_response(response_text.strip())
+                    logger.info(f"[LLM] API Response: {response_text.strip()}")
 
                     if require_json_output:
                         try:
@@ -893,35 +867,37 @@ class OllamaModels:
                             return "", ValueError(f"Failed to parse response as JSON: {e}")
                         return json.dumps(json_response), None
 
+                    # For non-JSON responses, keep original formatting but make single line
+                    logger.debug(f"[LLM] API Response: {' '.join(response_text.strip().splitlines())}")
                     return response_text.strip(), None
 
                 except ollama.ResponseError as e:
-                    print_error(f"Ollama response error: {e}")
-                    print_debug(f"ResponseError details: {e}")
+                    logger.error(f"Ollama response error: {e}")
+                    logger.debug(f"ResponseError details: {e}")
                     if attempt < MAX_RETRIES - 1:
                         retry_delay = min(MAX_DELAY, BASE_DELAY * (2**attempt))
                         jitter = random.uniform(0, 0.1 * retry_delay)
                         total_delay = retry_delay + jitter
-                        print_api_request(f"Retrying in {total_delay:.2f} seconds...")
+                        logger.info(f"Retrying in {total_delay:.2f} seconds...")
                         time.sleep(total_delay)
                     else:
                         return "", e
 
                 except ollama.RequestError as e:
-                    print_error(f"Ollama request error: {e}")
-                    print_debug(f"RequestError details: {e}")
+                    logger.error(f"Ollama request error: {e}")
+
                     if attempt < MAX_RETRIES - 1:
                         retry_delay = min(MAX_DELAY, BASE_DELAY * (2**attempt))
                         jitter = random.uniform(0, 0.1 * retry_delay)
                         total_delay = retry_delay + jitter
-                        print_api_request(f"Retrying in {total_delay:.2f} seconds...")
+                        logger.info(f"Retrying in {total_delay:.2f} seconds...")
                         time.sleep(total_delay)
                     else:
                         return "", e
 
                 except Exception as e:
-                    print_error(f"An unexpected error occurred: {e}")
-                    print_debug(f"Unexpected error details: {type(e).__name__}, {e}")
+                    logger.error(f"An unexpected error occurred: {e}")
+                    logger.debug(f"Unexpected error details: {type(e).__name__}, {e}")
                     return "", e
 
         finally:
@@ -976,15 +952,15 @@ class GroqModels:
             if not client.api_key:
                 raise ValueError("Groq API key not found in environment variables.")
 
-            # Debug print
-            print_conditional_color(f"\n[LLM] Groq ({model}) Request Messages:", "cyan")
-            for msg in messages:
-                print_api_request(json.dumps(msg, indent=2))
+            # Log request messages at DEBUG level
+            logger.debug(f"[LLM] Groq ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
 
             if stream:
                 spinner.stop()  # Stop spinner before streaming
 
                 async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started")
                     try:
                         response = client.chat.completions.create(
                             model=model,
@@ -997,11 +973,12 @@ class GroqModels:
                         for chunk in response:
                             if chunk.choices[0].delta.content:
                                 content = chunk.choices[0].delta.content
-                                if debug:
-                                    print_debug(f"Streaming chunk: {content}")
+                                full_message += content
                                 yield content
+                        logger.debug("Stream complete")
+                        logger.debug(f"Full message: {full_message}")
                     except Exception as e:
-                        print_error(f"An error occurred during streaming: {e}")
+                        logger.error(f"An error occurred during streaming: {e}")
                         yield ""
 
                 return stream_generator()
@@ -1019,14 +996,23 @@ class GroqModels:
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
 
-            if verbosity:
-                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                print_api_response(content.strip())
+            # Compress the response to single line if it's JSON
+            if require_json_output:
+                try:
+                    json_response = parse_json_response(content)
+                    compressed_content = json.dumps(json_response, separators=(',', ':'))
+                    logger.debug(f"[LLM] API Response: {compressed_content}")
+                    return compressed_content, None
+                except ValueError as e:
+                    return "", e
+            
+            # For non-JSON responses, keep original formatting but make single line
+            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
 
         except Exception as e:
             spinner.fail("Request failed")
-            print_error(f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}")
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
@@ -1054,18 +1040,13 @@ class GroqModels:
 
         return wrapper
 
-    # Model-specific methods using custom_model
-    gemma2_9b = custom_model("gemma2-9b-it")
-    gemma_7b = custom_model("gemma-7b-it")
-    llama3_groq_70b_tool_use = custom_model("llama3-groq-70b-8192-tool-use-preview")
-    llama3_groq_8b_tool_use = custom_model("llama3-groq-8b-8192-tool-use-preview")
-    llama_3_1_70b = custom_model("llama-3.1-70b-versatile")
-    llama_3_1_8b = custom_model("llama-3.1-8b-instant")
+    gemma2_9b_it = custom_model("gemma2-9b-it")
+    llama_3_3_70b_versatile = custom_model("llama-3.3-70b-versatile")
+    llama_3_1_8b_instant = custom_model("llama-3.1-8b-instant")
     llama_guard_3_8b = custom_model("llama-guard-3-8b")
-    llava_1_5_7b = custom_model("llava-v1.5-7b-4096-preview")
-    llama3_70b = custom_model("llama3-70b-8192")
-    llama3_8b = custom_model("llama3-8b-8192")
-    mixtral_8x7b = custom_model("mixtral-8x7b-32768")
+    llama3_70b_8192 = custom_model("llama3-70b-8192")
+    llama3_8b_8192 = custom_model("llama3-8b-8192")
+    mixtral_8x7b_32768 = custom_model("mixtral-8x7b-32768")
 
 
 class TogetheraiModels:
@@ -1089,41 +1070,40 @@ class TogetheraiModels:
             api_key = config.validate_api_key("TOGETHERAI_API_KEY")
             client = OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
 
-            # Process messages and images
-            if messages:
-                print_conditional_color(f"\n[LLM] TogetherAI ({model}) Request Messages:", "cyan")
-                for msg in messages:
-                    print_api_request(json.dumps(msg, indent=2))
+            # Process images if present
+            if image_data:
+                last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
+                if last_user_msg:
+                    content = []
+                    if isinstance(image_data, str):
+                        image_data = [image_data]
+                    
+                    for i, image in enumerate(image_data, start=1):
+                        content.append({"type": "text", "text": f"Image {i}:"})
+                        if image.startswith(("http://", "https://")):
+                            content.append({
+                                "type": "image_url",
+                                "image_url": {"url": image}
+                            })
+                        else:
+                            content.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{image}"}
+                            })
+                    
+                    # Add original text content
+                    content.append({"type": "text", "text": last_user_msg["content"]})
+                    last_user_msg["content"] = content
 
-                # Handle image data if present
-                if image_data:
-                    last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
-                    if last_user_msg:
-                        content = []
-                        if isinstance(image_data, str):
-                            image_data = [image_data]
-                        
-                        for i, image in enumerate(image_data, start=1):
-                            content.append({"type": "text", "text": f"Image {i}:"})
-                            if image.startswith(("http://", "https://")):
-                                content.append({
-                                    "type": "image_url",
-                                    "image_url": {"url": image}
-                                })
-                            else:
-                                content.append({
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{image}"}
-                                })
-                        
-                        # Add original text content
-                        content.append({"type": "text", "text": last_user_msg["content"]})
-                        last_user_msg["content"] = content
+            # Log request details after any message modifications
+            logger.debug(f"[LLM] TogetherAI ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
 
             if stream:
-                spinner.stop()  # Stop spinner before streaming
+                spinner.stop()
 
                 async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started")
                     try:
                         response = client.chat.completions.create(
                             model=model,
@@ -1137,12 +1117,13 @@ class TogetheraiModels:
                         for chunk in response:
                             if chunk.choices[0].delta.content:
                                 content = chunk.choices[0].delta.content
-                                if debug:
-                                    print_debug(f"Streaming chunk: {content}")
+                                full_message += content
                                 yield content
+                        logger.debug("Stream complete")
+                        logger.debug(f"Full message: {full_message}")
                         yield "\n" 
                     except Exception as e:
-                        print_error(f"An error occurred during streaming: {e}")
+                        logger.error(f"An error occurred during streaming: {e}")
                         yield ""
                         yield "\n" 
 
@@ -1160,23 +1141,24 @@ class TogetheraiModels:
 
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
-
-            if verbosity:
-                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                print_api_response(content.strip())
-
+            
+            # Compress the response to single line if it's JSON
             if require_json_output:
                 try:
                     json_response = parse_json_response(content)
-                    return json.dumps(json_response), None
+                    compressed_content = json.dumps(json_response, separators=(',', ':'))
+                    logger.debug(f"[LLM] API Response: {compressed_content}")
+                    return compressed_content, None
                 except ValueError as e:
                     return "", e
             
+            # For non-JSON responses, keep original formatting but make single line
+            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
 
         except Exception as e:
             spinner.fail("Request failed")
-            print_error(f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}")
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
@@ -1203,6 +1185,8 @@ class TogetheraiModels:
             )
 
         return wrapper
+
+    meta_llama_3_1_70b_instruct_turbo = custom_model("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo")
 
 
 class GeminiModels:
@@ -1248,27 +1232,27 @@ class GeminiModels:
                 model_name=model,
                 generation_config=genai.GenerationConfig(**generation_config)
             )
-
             # Print all messages together after spinner starts
-            if messages:
-                print_conditional_color(f"\n[LLM] Gemini ({model}) Request Messages:", "cyan")
-                for msg in messages:
-                    print_api_request(json.dumps(msg, indent=2))
+            logger.debug(f"[LLM] Gemini ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
 
             if stream:
                 spinner.stop()
                 last_user_message = next((msg["content"] for msg in reversed(messages) if msg["role"] == "user"), "")
+                full_message = ""
+                logger.debug("Stream started")
                 
                 try:
                     response = model_instance.generate_content(last_user_message, stream=True)
                     for chunk in response:
                         if chunk.text:
-                            if debug:
-                                print_debug(f"Streaming chunk: {chunk.text}")
-                            yield chunk.text
+                            content = chunk.text
+                            full_message += content
+                            yield content
                     
+                    logger.debug("Stream complete")
+                    logger.debug(f"Full message: {full_message}")
                 except Exception as e:
-                    print_error(f"Gemini streaming error: {str(e)}")
+                    logger.error(f"Gemini streaming error: {str(e)}")
                     yield ""
             else:
                 # Non-streaming: Use chat format
@@ -1287,8 +1271,8 @@ class GeminiModels:
                                     image_data = [image_data]
                                 for img in image_data:
                                     parts.append({"mime_type": "image/jpeg", "data": img})
-                                parts.append(content)
-                                response = chat.send_message(parts)
+                                    parts.append(content)
+                                    response = chat.send_message(parts)
                             else:
                                 response = chat.send_message(content)
                         elif role == "assistant":
@@ -1298,23 +1282,22 @@ class GeminiModels:
                 text_output = response.text.strip()
                 spinner.succeed("Request completed")
 
-                # Print response if verbosity enabled
-                print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                print_api_response(text_output.strip())
+                # Print response
+                logger.debug(f"[LLM] API Response: {text_output.strip()}")
 
                 if require_json_output:
                     try:
                         parsed = json.loads(text_output)
                         yield json.dumps(parsed)
                     except ValueError as ve:
-                        print_error(f"Failed to parse Gemini response as JSON: {ve}")
+                        logger.error(f"Failed to parse Gemini response as JSON: {ve}")
                         yield ""
                 else:
                     yield text_output
 
         except Exception as e:
             spinner.fail("Gemini request failed")
-            print_error(f"Unexpected error for Gemini model ({model}): {str(e)}")
+            logger.error(f"Unexpected error for Gemini model ({model}): {str(e)}")
             yield ""
 
     @staticmethod
@@ -1328,7 +1311,7 @@ class GeminiModels:
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             if stream:
-                # For streaming, return the generator directly
+                # For streaming, simply return the asynchronous generator.
                 return GeminiModels.send_gemini_request(
                     model=model_name,
                     image_data=image_data,
@@ -1339,8 +1322,10 @@ class GeminiModels:
                     stream=True,
                 )
             else:
-                # For non-streaming, await and return the first (and only) yielded value
-                async for response in GeminiModels.send_gemini_request(
+                # For non-streaming, consume the entire async generator,
+                # accumulating all yielded chunks into a single string.
+                result = ""
+                async for chunk in GeminiModels.send_gemini_request(
                     model=model_name,
                     image_data=image_data,
                     temperature=temperature,
@@ -1349,8 +1334,8 @@ class GeminiModels:
                     messages=messages,
                     stream=False,
                 ):
-                    return response, None  # Return the first yielded value
-                return "", None  # Return empty if no response
+                    result += chunk
+                return result, None
         return wrapper
 
     # Model-specific methods using custom_model
@@ -1381,7 +1366,7 @@ class DeepseekModels:
             List[Dict[str, str]]: Processed messages array
         """
         if require_json_output:
-            print_debug("\nWarning: JSON output format is not supported for the Reasoner model. Request will proceed without JSON formatting.")
+            logger.warning("Warning: JSON output format is not supported for the Reasoner model. Request will proceed without JSON formatting.")
 
         if not messages:
             return messages
@@ -1405,18 +1390,11 @@ class DeepseekModels:
                 current_role = msg["role"]
                 current_content = [msg["content"]]
 
-        # Don't forget to add the last message
         if current_role:
             processed.append({
                 "role": current_role,
                 "content": "\n".join(current_content)
             })
-
-        if debug:
-            print_debug("Original messages for Reasoner:")
-            print_debug(json.dumps(messages, indent=2))
-            print_debug("Processed messages for Reasoner:")
-            print_debug(json.dumps(processed, indent=2))
 
         return processed
 
@@ -1451,19 +1429,15 @@ class DeepseekModels:
 
             # Warn if image data was provided
             if image_data:
-                print_error("Warning: DeepSeek API does not support image inputs. Images will be ignored.")
+                logger.warning("Warning: DeepSeek API does not support image inputs. Images will be ignored.")
 
             # Preprocess messages only for the reasoner model
             if messages and model == "deepseek-reasoner":
                 messages = DeepseekModels._preprocess_reasoner_messages(messages, require_json_output)
                 # Remove JSON requirement for reasoner model
                 require_json_output = False
-
-            # Debug print
-            print_conditional_color(f"\n[LLM] DeepSeek ({model}) Request Messages:", "cyan")
-            if messages:
-                for msg in messages:
-                    print_api_request(json.dumps(msg, indent=2))
+            # Log request details
+            logger.debug(f"[LLM] DeepSeek ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
 
             request_params = {
                 "model": model,
@@ -1482,31 +1456,45 @@ class DeepseekModels:
                 spinner.stop()  # Stop spinner before streaming
 
                 async def stream_generator():
-                    try:
-                        response = await client.chat.completions.create(stream=True, **request_params)
+                    if model == "deepseek-reasoner":
+                        full_reasoning = ""
+                        full_answer = ""
                         in_reasoning = False
-                        async for chunk in response:
-                            if model == "deepseek-reasoner":
+                        logger.debug("Stream started")
+                        try:
+                            response = await client.chat.completions.create(stream=True, **request_params)
+                            async for chunk in response:
                                 if chunk.choices[0].delta.reasoning_content:
                                     if not in_reasoning:
                                         in_reasoning = True
                                     content = chunk.choices[0].delta.reasoning_content
-                                    if debug:
-                                        print_debug(f"Streaming reasoning chunk: {content}")
+                                    full_reasoning += content
                                     yield content
                                 elif chunk.choices[0].delta.content:
                                     if in_reasoning:
                                         in_reasoning = False
                                     content = chunk.choices[0].delta.content
-                                    if debug:
-                                        print_debug(f"Streaming answer chunk: {content}")
+                                    full_answer += content
                                     yield content
-                            else:
+                            logger.debug(f"Stream complete: reasoning: {full_reasoning}, answer: {full_answer}")
+                        except Exception as e:
+                            logger.error(f"An error occurred during streaming: {e}")
+                            yield ""
+                    else:
+                        full_message = ""
+                        logger.debug("Stream started")
+                        try:
+                            response = await client.chat.completions.create(stream=True, **request_params)
+                            async for chunk in response:
                                 if chunk.choices[0].delta.content:
-                                    yield chunk.choices[0].delta.content
-                    except Exception as e:
-                        print_error(f"An error occurred during streaming: {e}")
-                        yield ""
+                                    content = chunk.choices[0].delta.content
+                                    full_message += content
+                                    yield content
+                            logger.debug("Stream complete")
+                            logger.debug(f"Full message: {full_message}")
+                        except Exception as e:
+                            logger.error(f"An error occurred during streaming: {e}")
+                            yield ""
 
                 return stream_generator()
 
@@ -1517,34 +1505,32 @@ class DeepseekModels:
             if model == "deepseek-reasoner":
                 reasoning = response.choices[0].message.reasoning_content
                 content = response.choices[0].message.content
-                # Instead of returning a formatted string, return the tuple
+                # Instead of returning a formatted string, compress the output inline
                 spinner.succeed("Request completed")
+                compressed_reasoning = " ".join(reasoning.strip().split())
+                compressed_answer = " ".join(content.strip().split())
+                logger.debug(f"[LLM] API Response (Reasoning): {compressed_reasoning}")
+                logger.debug(f"[LLM] API Response (Answer): {compressed_answer}")
 
-                if verbosity:
-                    print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                    print_api_response(f"{reasoning}\n\n{content}")
-
-                return (reasoning, content), None  # Return tuple of (reasoning, answer)
+                return (compressed_reasoning, compressed_answer), None  # Return tuple of (reasoning, answer)
             else:
                 content = response.choices[0].message.content
                 spinner.succeed("Request completed")
-
-                if verbosity:
-                    print_conditional_color("\n[LLM] Actual API Response:", "light_blue")
-                    print_api_response(content.strip())
+                compressed_content = " ".join(content.strip().split())
+                logger.debug(f"[LLM] API Response: {compressed_content}")
 
                 if require_json_output:
                     try:
                         return json.dumps(parse_json_response(content)), None
                     except ValueError as e:
-                        print_error(f"Failed to parse response as JSON: {e}")
+                        logger.error(f"Failed to parse response as JSON: {e}")
                         return "", e
 
-                return content.strip(), None
+                return compressed_content, None
 
         except Exception as e:
             spinner.fail("Request failed")
-            print_error(f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error: {str(e)}")
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
