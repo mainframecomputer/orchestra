@@ -782,7 +782,8 @@ The original task instruction:
                 except (json.JSONDecodeError, ValueError) as e:
                     error_msg = f"Invalid tool response: {str(e)}"
                     logger.error(f"[TOOL_LOOP] {error_msg}")
-                    logger.error(f"Problematic response: {response[:400].replace('\n', ' ')}...")
+                    truncated_response = repr(response[:400])
+                    logger.error(f"Problematic response: {truncated_response}...")
 
                     if callback:
                         await callback(
