@@ -1,8 +1,10 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 from datetime import timedelta, datetime
+from braintrust import traced
 
 class CalculatorTools:
+    @traced(type="tool")
     @staticmethod
     def basic_math(operation: str, args: list) -> float:
         """
@@ -76,6 +78,7 @@ class CalculatorTools:
         # Convert the result to a string before returning
         return str(result)
 
+    @traced(type="tool")
     @staticmethod
     def get_current_time() -> str:
         """
@@ -86,6 +89,7 @@ class CalculatorTools:
         """
         return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
+    @traced(type="tool")
     @staticmethod
     def add_days(date_str: str, days: int) -> str:
         """
@@ -102,6 +106,7 @@ class CalculatorTools:
         new_date = date + timedelta(days=days)
         return new_date.strftime("%Y-%m-%d")
 
+    @traced(type="tool")
     @staticmethod
     def days_between(date1_str: str, date2_str: str) -> int:
         """
@@ -118,6 +123,7 @@ class CalculatorTools:
         date2 = datetime.strptime(date2_str, "%Y-%m-%d")
         return abs((date2 - date1).days)
 
+    @traced(type="tool")
     @staticmethod
     def format_date(date_str: str, input_format: str, output_format: str) -> str:
         """

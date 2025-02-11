@@ -4,6 +4,7 @@ from typing import List, Union
 import numpy as np
 from dotenv import load_dotenv
 from .embedding_tools import EmbeddingsTools
+from braintrust import traced
 import igraph as ig
 import leidenalg as la
 from sentence_splitter import SentenceSplitter as ExternalSentenceSplitter
@@ -14,6 +15,7 @@ class SemanticSplitter:
         self.embedding_provider = embedding_provider
         self.embedding_model = embedding_model
 
+    @traced(type="tool")
     @staticmethod
     def chunk_text(text: Union[str, List[str]], rearrange: bool = False, 
                    embedding_provider: str = "openai", embedding_model: str = "text-embedding-3-small") -> List[str]:
@@ -29,6 +31,7 @@ class SemanticSplitter:
         else:
             raise ValueError("Input must be either a string or a list of strings")
 
+    @traced(type="tool")
     def _process_single_text(self, text: str, rearrange: bool) -> List[str]:
         segments = self._create_sentence_segments(text)
         embeddings = self._embed_segments(segments)
@@ -38,16 +41,19 @@ class SemanticSplitter:
         print(f"Created {len(chunks)} non-empty chunks for this document")
         return chunks
 
+    @traced(type="tool")
     def _create_sentence_segments(self, text: str) -> List[str]:
         sentences = SentenceSplitter.split_text_by_sentences(text)
         segments = [sentence.strip() for sentence in sentences]
         print(f"Created {len(segments)} segments")
         return segments
 
+    @traced(type="tool")
     def _embed_segments(self, segments: List[str]) -> np.ndarray:
         embeddings, _ = EmbeddingsTools.get_embeddings(segments, self.embedding_provider, self.embedding_model)
         return np.array(embeddings)
 
+    @traced(type="tool")
     def _detect_communities(self, embeddings: np.ndarray) -> List[int]:
         if embeddings.shape[0] < 2:
             return [0]
@@ -63,19 +69,17 @@ class SemanticSplitter:
         
         return communities
 
+    @traced(type="tool")
     def _create_chunks_from_communities(self, segments: List[str], communities: List[int], rearrange: bool) -> List[str]:
         if rearrange:
-            # Group segments by community
             community_groups = {}
             for segment, community in zip(segments, communities):
                 if community not in community_groups:
                     community_groups[community] = []
                 community_groups[community].append(segment)
             
-            # Create chunks from rearranged communities
             chunks = [' '.join(group).strip() for group in community_groups.values() if group]
         else:
-            # Create chunks respecting original order
             chunks = []
             current_community = communities[0]
             current_chunk = []
@@ -87,32 +91,29 @@ class SemanticSplitter:
                     current_community = community
                 current_chunk.append(segment)
             
-            # Add the last chunk
             if current_chunk:
                 chunks.append(' '.join(current_chunk).strip())
         
-        return [chunk for chunk in chunks if chunk]  # Remove any empty chunks
+        return [chunk for chunk in chunks if chunk]
 
+    @traced(type="tool")
     def _identify_breakpoints(self, communities: List[int]) -> List[int]:
-        breakpoints = []
-        for i in range(1, len(communities)):
-            if communities[i] != communities[i-1]:
-                breakpoints.append(i)
-        return breakpoints
+        return [i for i in range(1, len(communities)) if communities[i] != communities[i-1]]
 
+    @traced(type="tool")
     def _create_similarity_graph(self, embeddings: np.ndarray, similarity_threshold: float) -> ig.Graph:
         similarities = np.dot(embeddings, embeddings.T)
         np.fill_diagonal(similarities, 0)
         similarities = np.maximum(similarities, 0)
         similarities = (similarities - np.min(similarities)) / (np.max(similarities) - np.min(similarities))
         
-        # Apply similarity threshold
         adjacency_matrix = (similarities >= similarity_threshold).astype(int)
         
         G = ig.Graph.Adjacency(adjacency_matrix.tolist())
         G.es['weight'] = similarities[np.where(adjacency_matrix)]
         return G
 
+    @traced(type="tool")
     def _find_optimal_partition(self, G: ig.Graph, resolution: float) -> la.VertexPartition:
         return la.find_partition(
             G, 
@@ -121,6 +122,7 @@ class SemanticSplitter:
             resolution_parameter=resolution
         )
 
+    @traced(type="tool")
     def _split_oversized_communities(self, membership: List[int], max_size: int) -> List[int]:
         community_sizes = {}
         for comm in membership:
@@ -139,6 +141,7 @@ class SemanticSplitter:
         return new_membership
 
 class SentenceSplitter:
+    @traced(type="tool")
     @staticmethod
     def split_text_by_sentences(text: str, chunk_size: int = 5, overlap: int = 1, language: str = 'en') -> List[str]:
         """

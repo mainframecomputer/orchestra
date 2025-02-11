@@ -4,6 +4,7 @@ import os
 import json
 from typing import Any, List, Dict, Union, Literal, Optional
 from bs4 import BeautifulSoup
+from braintrust import traced
 import requests
 import time
 import random
@@ -11,6 +12,7 @@ from fake_useragent import UserAgent
 from dotenv import load_dotenv
 
 class WebTools:
+    @traced(type="tool")
     @staticmethod
     def exa_search(queries: Union[str, List[str]], num_results: int = 10, search_type: str = "neural", num_sentences: int = 5, highlights_per_url: int = 3) -> dict:
         """
@@ -129,6 +131,7 @@ class WebTools:
 
         return structured_data
 
+    @traced(type="tool")
     @staticmethod
     def scrape_urls(urls: Union[str, List[str]], include_html: bool = False, include_links: bool = False) -> List[Dict[str, Any]]:
         """
@@ -198,6 +201,7 @@ class WebTools:
 
         return results
 
+    @traced(type="tool")
     @staticmethod
     def serper_search(
         query: Union[str, List[str]],
@@ -317,6 +321,7 @@ class WebTools:
 
         return results_list[0] if len(results_list) == 1 else results_list
 
+    @traced(type="tool")
     @staticmethod
     def scrape_url_with_serper(urls: Union[str, List[str]]) -> Union[dict, List[dict]]:
         """
@@ -371,6 +376,7 @@ class WebTools:
         else:
             raise ValueError("Input must be a string (single URL) or a list of strings (multiple URLs)")
 
+    @traced(type="tool")
     @staticmethod
     def query_arxiv_api(
         query: str,
@@ -438,6 +444,7 @@ class WebTools:
             print(f"Error querying Arxiv API: {e}")
             raise
 
+    @traced(type="tool")
     @staticmethod
     def get_weather_data(
         location: str,

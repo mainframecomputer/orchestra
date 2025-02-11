@@ -4,12 +4,14 @@ import os
 import csv
 import json
 import xml.etree.ElementTree as ET
+from braintrust import traced
 from typing import Any, List, Dict, Union
 import yaml
 
 debug_mode = False
 
 class FileTools:
+    @traced(type="tool")
     @staticmethod
     def save_code_to_file(code: str, file_path: str):
         """
@@ -40,6 +42,7 @@ class FileTools:
             print(f"An unexpected error occurred at FileTools.save_code_to_file: {e}")
             print(f"Unexpected error at FileTools.save_code_to_file: {str(e)}")
     
+    @traced(type="tool")
     @staticmethod
     def generate_directory_tree(base_path, additional_ignore=None):
         """
@@ -155,6 +158,7 @@ class FileTools:
             print(f"Unexpected error in generate_directory_tree: {str(e)}")
             raise  
 
+    @traced(type="tool")
     @staticmethod
     def read_file_contents(full_file_path):
         """
@@ -201,6 +205,7 @@ class FileTools:
             print(f"Unexpected error in FileTools.read_file_contents: {full_file_path}. Error: {str(e)}")
             return None
 
+    @traced(type="tool")
     @staticmethod
     def read_csv(file_path: str) -> List[Dict[str, Any]]:
         """
@@ -227,6 +232,7 @@ class FileTools:
             print(f"Error parsing CSV file: {e}")
             return (f"Error parsing CSV file: {e}")
 
+    @traced(type="tool")
     @staticmethod
     def read_json(file_path: str) -> Union[Dict[str, Any], List[Any]]:
         """
@@ -252,6 +258,7 @@ class FileTools:
             print(f"Error parsing JSON file: {e}")
             return (f"Error parsing JSON file: {e}")
 
+    @traced(type="tool")
     @staticmethod
     def read_xml(file_path: str) -> ET.Element:
         """
@@ -277,6 +284,7 @@ class FileTools:
             print(f"Error parsing XML file: {e}")
             return (f"Error parsing XML file: {e}")
 
+    @traced(type="tool")
     @staticmethod
     def read_yaml(file_path: str) -> Union[Dict[str, Any], List[Any]]:
         """
@@ -302,6 +310,7 @@ class FileTools:
             print(f"Error parsing YAML file: {e}")
             return (f"Error parsing YAML file: {e}")
 
+    @traced(type="tool")
     @staticmethod
     def search_csv(file_path: str, search_column: str, search_value: Any) -> List[Dict[str, Any]]:
         """
@@ -336,6 +345,7 @@ class FileTools:
             print(f"Error: {e}")
             return (f"Error: {e}")
 
+    @traced(type="tool")
     @staticmethod
     def search_json(data: Union[Dict[str, Any], List[Any]], search_key: str, search_value: Any) -> List[Any]:
         """
@@ -364,6 +374,7 @@ class FileTools:
         search_recursive(data)
         return results
 
+    @traced(type="tool")
     @staticmethod
     def search_xml(root: ET.Element, tag: str, attribute: str = None, value: str = None) -> List[ET.Element]:
         """
@@ -383,6 +394,7 @@ class FileTools:
         else:
             return root.findall(f".//*{tag}")
 
+    @traced(type="tool")
     @staticmethod
     def search_yaml(data: Union[Dict[str, Any], List[Any]], search_key: str, search_value: Any) -> List[Any]:
         """
@@ -399,6 +411,7 @@ class FileTools:
         # YAML is parsed into Python data structures, so we can reuse the JSON search method
         return FileTools.search_json(data, search_key, search_value)
 
+    @traced(type="tool")
     @staticmethod
     def write_markdown(file_path: str, content: str) -> str:
         """
@@ -422,6 +435,7 @@ class FileTools:
         abs_path = os.path.abspath(file_path)
         return f"Markdown file written to {abs_path}"
     
+    @traced(type="tool")
     @staticmethod
     def write_csv(file_path: str, data: List[List[str]], delimiter: str = ',') -> Union[bool, str]:
         """
@@ -445,6 +459,7 @@ class FileTools:
             print(error_msg)
             return error_msg
 
+    @traced(type="tool")
     @staticmethod
     def get_column(data: List[List[str]], column_index: int) -> Union[List[str], str]:
         """
@@ -480,6 +495,7 @@ class FileTools:
             print(error_msg)
             return error_msg
 
+    @traced(type="tool")
     @staticmethod
     def filter_rows(data: List[List[str]], column_index: int, value: str) -> Union[List[List[str]], str]:
         """
@@ -516,6 +532,7 @@ class FileTools:
             print(error_msg)
             return error_msg
 
+    @traced(type="tool")
     @staticmethod
     def peek_csv(file_path: str, num_lines: int = 5) -> Union[List[List[str]], str]:
         """

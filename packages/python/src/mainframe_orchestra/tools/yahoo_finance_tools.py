@@ -2,6 +2,7 @@
 
 import json
 from typing import List, Dict, Any, Union
+from braintrust import traced
 
 def check_yfinance():
     try:
@@ -26,6 +27,7 @@ def check_pandas():
 
 
 class YahooFinanceTools:
+    @traced(type="tool")
     @staticmethod
     def get_ticker_info(ticker: str) -> Dict[str, Any]:
         """
@@ -77,6 +79,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving info for ticker {ticker}: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def get_historical_data(ticker: str, period: str = "1y", interval: str = "1wk") -> str:
         """
@@ -124,6 +127,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving historical data for ticker {ticker}: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def calculate_returns(tickers: Union[str, List[str]], period: str = "1mo", interval: str = "1d"):
         """
@@ -168,6 +172,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error calculating returns for tickers {tickers}: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def get_financials(ticker: str, statement: str = "income"):
         """
@@ -197,6 +202,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving {statement} statement for ticker {ticker}: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def get_recommendations(ticker: str):
         """
@@ -218,6 +224,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving recommendations for ticker {ticker}: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def download_multiple_tickers(tickers: List[str], period: str = "1mo", interval: str = "1d"):
         """
@@ -264,6 +271,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error downloading data for tickers {tickers}: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def get_asset_profile(ticker: str) -> Dict[str, Any]:
         """
@@ -285,6 +293,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving asset profile for ticker {ticker}: {str(e)}")
         
+    @traced(type="tool")
     @staticmethod
     def get_balance_sheet(ticker: str, quarterly: bool = False):
         """
@@ -310,6 +319,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving balance sheet for ticker {ticker}: {str(e)}")
         
+    @traced(type="tool")
     @staticmethod
     def get_cash_flow(ticker: str, quarterly: bool = False):
         """
@@ -335,6 +345,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving cash flow statement for ticker {ticker}: {str(e)}")
         
+    @traced(type="tool")
     @staticmethod
     def get_income_statement(ticker: str, quarterly: bool = False):
     
@@ -361,6 +372,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving income statement for ticker {ticker}: {str(e)}")
         
+    @traced(type="tool")
     @staticmethod
     def get_custom_historical_data(ticker: str, start_date: str, end_date: str, 
                                 frequency: str = '1d', event: str = 'history'):
@@ -391,6 +403,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error retrieving custom historical data for ticker {ticker}: {str(e)}")
         
+    @traced(type="tool")
     @staticmethod
     def technical_analysis(ticker: str, period: str = "1y") -> Dict[str, Any]:
         """
@@ -449,6 +462,7 @@ class YahooFinanceTools:
         except Exception as e:
             raise ValueError(f"Error performing technical analysis for ticker {ticker}: {str(e)}")
         
+    @traced(type="tool")
     @staticmethod
     def fundamental_analysis(ticker: str) -> Dict[str, Any]:
         """

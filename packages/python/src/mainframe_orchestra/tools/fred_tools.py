@@ -2,6 +2,7 @@
 
 import os
 from typing import Dict, Any, List
+from braintrust import traced
 
 def check_pandas():
     try:
@@ -19,6 +20,7 @@ def check_fredapi():
 
 
 class FredTools:
+    @traced(type="tool")
     @staticmethod
     def economic_indicator_analysis(indicator_ids: List[str], start_date: str, end_date: str) -> Dict[str, Any]:
         """
@@ -67,6 +69,7 @@ class FredTools:
 
         return results
 
+    @traced(type="tool")
     @staticmethod
     def yield_curve_analysis(treasury_maturities: List[str], start_date: str, end_date: str) -> Dict[str, Any]:
         """
@@ -115,6 +118,7 @@ class FredTools:
 
         return results
 
+    @traced(type="tool")
     @staticmethod
     def economic_news_sentiment_analysis(news_series_id: str, start_date: str, end_date: str) -> Dict[str, Any]:
         """

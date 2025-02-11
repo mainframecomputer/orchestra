@@ -3,6 +3,7 @@
 import os
 from typing import List, Dict, Any
 import numpy as np
+from braintrust import traced
 
 def check_pinecone():
     try:
@@ -24,10 +25,13 @@ class PineconeTools:
             raise ValueError("Pinecone API key is required. Please provide it or set the PINECONE_API_KEY environment variable.")
         self.pc = check_pinecone().Pinecone(api_key=self.api_key)
 
+    @traced(type="tool")
     def get_pinecone_index(self, name: str):
         pinecone_client = check_pinecone().Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         return pinecone_client.Index(name)
 
+    
+    @traced(type="tool")
     def create_index(self, name: str, dimension: int, metric: str = "cosine", cloud: str = "aws", region: str = "us-east-1") -> None:
         """
         Create a new Pinecone index.
@@ -53,6 +57,7 @@ class PineconeTools:
         except Exception as e:
             raise Exception(f"Error creating index: {str(e)}")
 
+    @traced(type="tool")
     def delete_index(self, name: str) -> None:
         """
         Delete a Pinecone index.
@@ -69,6 +74,7 @@ class PineconeTools:
         except Exception as e:
             raise Exception(f"Error deleting index: {str(e)}")
 
+    @traced(type="tool")
     def list_indexes(self) -> List[str]:
         """
         List all available Pinecone indexes.
@@ -84,6 +90,7 @@ class PineconeTools:
         except Exception as e:
             raise Exception(f"Error listing indexes: {str(e)}")
 
+    @traced(type="tool")
     def upsert_vectors(self, index_name: str, vectors: List[Dict[str, Any]]) -> None:
         """
         Upsert vectors into a Pinecone index.
@@ -102,6 +109,7 @@ class PineconeTools:
         except Exception as e:
             raise Exception(f"Error upserting vectors: {str(e)}")
 
+    @traced(type="tool")
     def query_index(self, index_name: str, query_vector: List[float], top_k: int = 10, filter: Dict = None, include_metadata: bool = True) -> Dict[str, Any]:
         """
         Query a Pinecone index for similar vectors.
@@ -131,6 +139,7 @@ class PineconeTools:
         except Exception as e:
             raise Exception(f"Error querying index: {str(e)}")
 
+    @traced(type="tool")
     def delete_vectors(self, index_name: str, ids: List[str]) -> None:
         """
         Delete vectors from a Pinecone index by their IDs.
@@ -149,6 +158,7 @@ class PineconeTools:
         except Exception as e:
             raise Exception(f"Error deleting vectors: {str(e)}")
 
+    @traced(type="tool")
     def update_vector_metadata(self, index_name: str, id: str, metadata: Dict[str, Any]) -> None:
         """
         Update the metadata of a vector in a Pinecone index.
@@ -168,6 +178,7 @@ class PineconeTools:
         except Exception as e:
             raise Exception(f"Error updating vector metadata: {str(e)}")
 
+    @traced(type="tool")
     def describe_index_stats(self, index_name: str) -> Dict[str, Any]:
         """
         Get statistics about a Pinecone index.
@@ -187,6 +198,7 @@ class PineconeTools:
         except Exception as e:
             raise Exception(f"Error describing index stats: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def normalize_vector(vector: List[float]) -> List[float]:
         """

@@ -2,6 +2,7 @@
 
 from typing import List
 from langchain_core.tools import module
+from braintrust import traced
 
 class LangchainTools:
     @staticmethod
@@ -53,7 +54,7 @@ class LangchainTools:
         wrapped_tool.__name__ = name
         wrapped_tool.__doc__ = "\n".join(doc_parts)
         return wrapped_tool
-    
+    @traced(type="tool")
     @classmethod
     def get_tool(cls, tool_name: str):
         cls._check_dependencies()
@@ -94,6 +95,7 @@ class LangchainTools:
         
         return list(_module_lookup.keys())
 
+    @traced(type="tool")
     @classmethod
     def get_tool_info(cls, tool_name: str) -> dict:
         """

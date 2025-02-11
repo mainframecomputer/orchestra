@@ -1,6 +1,7 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 from typing import List, Union, Any
+from braintrust import traced
 
 def check_matplotlib_dependencies():
     try:
@@ -12,11 +13,13 @@ def check_matplotlib_dependencies():
         raise ImportError("Matplotlib dependencies are not installed. To use MatplotlibTools, install the required packages with 'pip install matplotlib'")
 
 class MatplotlibTools:
+    @traced(type="tool")
     @staticmethod
     def _check_dependencies():
         if 'np' not in globals() or 'plt' not in globals():
             raise ImportError("Matplotlib is not installed. To use MatplotlibTools, install the required packages with 'pip install matplotlib'")
 
+    @traced(type="tool")
     @staticmethod
     def create_line_plot(x: List[List[Union[float, str]]], y: List[List[float]], title: str = None, xlabel: str = "X", ylabel: str = "Y", 
                          output_file: str = "line_plot.png") -> Union[Any, str]:
@@ -80,6 +83,7 @@ class MatplotlibTools:
             if fig is not None:
                 plt.close(fig)  # Ensure the figure is closed to free up memory
 
+    @traced(type="tool")
     @staticmethod
     def create_scatter_plot(x: List[float], y: List[float], title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
         """
@@ -129,6 +133,7 @@ class MatplotlibTools:
             print(error_msg)
             return error_msg
 
+    @traced(type="tool")
     @staticmethod
     def create_bar_plot(x: List[str], y: List[float], title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
         """
@@ -177,6 +182,7 @@ class MatplotlibTools:
             print(error_msg)
             return error_msg
 
+    @traced(type="tool")
     @staticmethod
     def create_histogram(data: List[float], bins: int = 10, title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
         """
@@ -218,6 +224,7 @@ class MatplotlibTools:
             print(error_msg)
             return error_msg
 
+    @traced(type="tool")
     @staticmethod 
     def create_heatmap(data: List[List[float]], title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
         """

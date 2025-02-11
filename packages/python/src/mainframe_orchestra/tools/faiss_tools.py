@@ -4,6 +4,7 @@ import os
 import json
 import numpy as np
 from typing import Tuple, Any
+from braintrust import traced
 
 class FAISSTools:
     def __init__(self, dimension: int, metric: str = "IP"):
@@ -29,6 +30,7 @@ class FAISSTools:
 
         self.faiss = faiss
 
+    @traced(type="tool")
     def create_index(self, index_type: str = "Flat") -> None:
         """
         Create a new FAISS index.
@@ -49,6 +51,7 @@ class FAISSTools:
         else:
             raise ValueError(f"Unsupported index type: {index_type}")
 
+    @traced(type="tool")
     def load_index(self, index_path: str) -> None:
         """
         Load a FAISS index and metadata from files.
@@ -72,6 +75,7 @@ class FAISSTools:
         self.dimension = self.index.d
         self.embedding_model = self.metadata.get('embedding_model')
 
+    @traced(type="tool")
     def save_index(self, index_path: str) -> None:
         """
         Save the FAISS index and metadata to files.
@@ -84,6 +88,7 @@ class FAISSTools:
         with open(metadata_path, 'w') as f:
             json.dump(self.metadata, f)
 
+    @traced(type="tool")
     def add_vectors(self, vectors: np.ndarray) -> None:
         """
         Add vectors to the FAISS index.
@@ -103,6 +108,7 @@ class FAISSTools:
         
         self.index.add(vectors)
 
+    @traced(type="tool")
     def search_vectors(self, query_vectors: np.ndarray, top_k: int = 10) -> Tuple[np.ndarray, np.ndarray]:
         """
         Search for similar vectors in the FAISS index.
@@ -127,6 +133,7 @@ class FAISSTools:
         distances, indices = self.index.search(query_vectors, top_k)
         return distances, indices
 
+    @traced(type="tool")
     def remove_vectors(self, ids: np.ndarray) -> None:
         """
         Remove vectors from the FAISS index by their IDs.
@@ -145,6 +152,7 @@ class FAISSTools:
         """
         return self.index.ntotal
 
+    @traced(type="tool")
     @staticmethod
     def normalize_vector(vector: np.ndarray) -> np.ndarray:
         """
