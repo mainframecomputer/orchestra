@@ -8,9 +8,10 @@ This module provides fallback decorators when Braintrust is not available.
 try:
     from braintrust import traced, wrap_openai
     BRAINTRUST_AVAILABLE = True
+    print("Braintrust Available")
 except ImportError:
     BRAINTRUST_AVAILABLE = False
-    
+    print("Braintrust Not available")
     def traced(type=None):
         """No-op decorator when Braintrust is not available"""
         def decorator(func):
