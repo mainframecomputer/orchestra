@@ -30,7 +30,7 @@ from openai import (
 from groq import Groq
 import ollama
 import google.generativeai as genai
-from braintrust import wrap_openai
+from .utils.braintrust_utils import wrap_openai
 
 # Import config, fall back to environment variables if not found
 try:

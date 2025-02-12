@@ -3,7 +3,7 @@
 import os
 import requests
 from typing import Dict, List, Optional, Union
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 class LinearTools:
     def __init__(self):

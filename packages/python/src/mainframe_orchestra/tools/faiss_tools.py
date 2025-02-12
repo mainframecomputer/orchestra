@@ -4,7 +4,7 @@ import os
 import json
 import numpy as np
 from typing import Tuple, Any
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 class FAISSTools:
     def __init__(self, dimension: int, metric: str = "IP"):

@@ -4,7 +4,7 @@ import os
 import json
 from typing import Any, List, Dict, Union, Literal, Optional
 from bs4 import BeautifulSoup
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 import requests
 import time
 import random

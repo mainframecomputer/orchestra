@@ -5,7 +5,7 @@ from typing import List, Dict, Union, Literal, Tuple
 from dotenv import load_dotenv
 import requests
 import time
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 # Load environment variables
 load_dotenv()

@@ -2,7 +2,7 @@
 
 import json
 from typing import List, Dict, Any, Union
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 def check_yfinance():
     try:

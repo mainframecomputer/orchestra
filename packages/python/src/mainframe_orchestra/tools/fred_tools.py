@@ -2,7 +2,7 @@
 
 import os
 from typing import Dict, Any, List
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 def check_pandas():
     try:

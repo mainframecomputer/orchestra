@@ -4,7 +4,7 @@ from typing import Optional
 from dotenv import load_dotenv
 import os
 from stripe_agent_toolkit.api import StripeAPI
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 from stripe_agent_toolkit.configuration import Context
 
 class StripeTools:

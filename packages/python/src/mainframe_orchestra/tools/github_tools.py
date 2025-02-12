@@ -2,7 +2,7 @@ from typing import Dict, Any, List, Optional
 import requests
 import base64
 import os
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 # Define custom tools
 class GitHubTools:

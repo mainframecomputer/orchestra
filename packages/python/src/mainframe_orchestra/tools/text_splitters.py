@@ -4,7 +4,7 @@ from typing import List, Union
 import numpy as np
 from dotenv import load_dotenv
 from .embedding_tools import EmbeddingsTools
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 import igraph as ig
 import leidenalg as la
 from sentence_splitter import SentenceSplitter as ExternalSentenceSplitter

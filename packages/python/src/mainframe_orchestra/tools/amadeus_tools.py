@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, Tuple, Union
 from dotenv import load_dotenv
 import requests
 from datetime import datetime, timedelta
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 class AmadeusTools:
     @staticmethod

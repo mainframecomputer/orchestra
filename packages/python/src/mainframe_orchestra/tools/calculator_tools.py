@@ -1,7 +1,7 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 from datetime import timedelta, datetime
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 class CalculatorTools:
     @traced(type="tool")

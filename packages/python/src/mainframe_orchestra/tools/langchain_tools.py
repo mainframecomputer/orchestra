@@ -2,7 +2,7 @@
 
 from typing import List
 from langchain_core.tools import module
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 class LangchainTools:
     @staticmethod

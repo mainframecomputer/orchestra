@@ -3,7 +3,7 @@
 import os
 from typing import List, Dict, Any
 import numpy as np
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 def check_pinecone():
     try:

@@ -1,7 +1,7 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 from typing import List, Union, Any
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 def check_matplotlib_dependencies():
     try:

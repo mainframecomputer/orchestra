@@ -4,7 +4,7 @@ import os
 from typing import List, Dict, Optional, Literal, Union
 from dotenv import load_dotenv
 import requests
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 from openai import OpenAI
 import time
 import io

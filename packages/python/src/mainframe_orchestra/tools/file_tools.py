@@ -4,7 +4,7 @@ import os
 import csv
 import json
 import xml.etree.ElementTree as ET
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 from typing import Any, List, Dict, Union
 import yaml
 

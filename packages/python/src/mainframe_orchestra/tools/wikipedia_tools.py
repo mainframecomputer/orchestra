@@ -2,7 +2,7 @@
 
 import requests
 from typing import List, Dict, Optional
-from braintrust import traced
+from ..utils.braintrust_utils import traced
 
 class WikipediaTools:
     @traced(type="tool")
