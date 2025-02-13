@@ -3,6 +3,7 @@
 import os
 import requests
 from typing import Dict, List, Optional, Union
+from ..utils.braintrust_utils import traced
 
 class LinearTools:
     def __init__(self):
@@ -35,6 +36,7 @@ class LinearTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @classmethod
     def get_team_issues(cls, team_id: str = None, status: Optional[str] = None) -> Union[List[Dict], str]:
         try:
@@ -71,6 +73,7 @@ class LinearTools:
         except Exception as e:
             return f"Error fetching team issues: {str(e)}"
 
+    @traced(type="tool")
     @classmethod
     def update_issue_status(cls, issue_id: str, status_id: str) -> Union[Dict, str]:
         """
@@ -111,6 +114,7 @@ class LinearTools:
         except Exception as e:
             return f"Error updating issue status: {str(e)}"
 
+    @traced(type="tool")
     @classmethod
     def search_issues(cls, search_query: str) -> Union[List[Dict], str]:
         """
@@ -148,6 +152,7 @@ class LinearTools:
         except Exception as e:
             return f"Error searching issues: {str(e)}"
 
+    @traced(type="tool")
     @classmethod
     def get_team_by_name(cls, team_name: str) -> Union[Dict, str]:
         """
@@ -188,6 +193,7 @@ class LinearTools:
         except Exception as e:
             return f"Error fetching team: {str(e)}"
 
+    @traced(type="tool")
     @classmethod
     def get_workflow_states(cls, team_id: str = None) -> Union[List[Dict], str]:
         """
@@ -215,6 +221,7 @@ class LinearTools:
         except Exception as e:
             return f"Error fetching workflow states: {str(e)}"
 
+    @traced(type="tool")
     @classmethod
     def create_issue(cls, title: str, description: str, team_id: str = None, priority: Optional[int] = None, state_id: Optional[str] = None) -> Union[Dict, str]:
         """

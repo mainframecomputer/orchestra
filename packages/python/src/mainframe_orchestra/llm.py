@@ -30,6 +30,7 @@ from openai import (
 from groq import Groq
 import ollama
 import google.generativeai as genai
+from .utils.braintrust_utils import wrap_openai
 
 # Import config, fall back to environment variables if not found
 try:
@@ -247,7 +248,7 @@ class OpenaiModels:
 
         try:
             api_key = config.validate_api_key("OPENAI_API_KEY")
-            client = AsyncOpenAI(api_key=api_key)
+            client = wrap_openai(AsyncOpenAI(api_key=api_key))
             if not client.api_key:
                 raise ValueError("OpenAI API key not found in environment variables.")
 

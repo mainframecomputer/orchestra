@@ -4,6 +4,7 @@ from typing import Optional
 from dotenv import load_dotenv
 import os
 from stripe_agent_toolkit.api import StripeAPI
+from ..utils.braintrust_utils import traced
 from stripe_agent_toolkit.configuration import Context
 
 class StripeTools:
@@ -16,12 +17,14 @@ class StripeTools:
             context=Context()
         )
 
+    @traced(type="tool")
     @classmethod
     def get_api(cls):
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance.api
 
+    @traced(type="tool")
     @classmethod
     def check_balance(cls) -> str:
         """
@@ -32,6 +35,7 @@ class StripeTools:
         """
         return cls.get_api().run("retrieve_balance")
 
+    @traced(type="tool")
     @classmethod
     def list_customers(cls, email: Optional[str] = None, limit: Optional[int] = None) -> str:
         """
@@ -46,6 +50,7 @@ class StripeTools:
         """
         return cls.get_api().run("list_customers", email=email, limit=limit)
 
+    @traced(type="tool")
     @classmethod
     def list_products(cls, limit: Optional[int] = None) -> str:
         """
@@ -59,6 +64,7 @@ class StripeTools:
         """
         return cls.get_api().run("list_products", limit=limit)
 
+    @traced(type="tool")
     @classmethod
     def create_customer(cls, name: str, email: Optional[str] = None) -> str:
         """
@@ -73,6 +79,7 @@ class StripeTools:
         """
         return cls.get_api().run("create_customer", name=name, email=email)
 
+    @traced(type="tool")
     @classmethod
     def create_product(cls, name: str, description: Optional[str] = None) -> str:
         """
@@ -87,6 +94,7 @@ class StripeTools:
         """
         return cls.get_api().run("create_product", name=name, description=description)
 
+    @traced(type="tool")
     @classmethod
     def create_price(cls, product: str, currency: str, unit_amount: int) -> str:
         """
@@ -102,6 +110,7 @@ class StripeTools:
         """
         return cls.get_api().run("create_price", product=product, currency=currency, unit_amount=unit_amount)
 
+    @traced(type="tool")
     @classmethod
     def list_prices(cls, product: Optional[str] = None, limit: Optional[int] = None) -> str:
         """
@@ -116,6 +125,7 @@ class StripeTools:
         """
         return cls.get_api().run("list_prices", product=product, limit=limit)
 
+    @traced(type="tool")
     @classmethod
     def create_payment_link(cls, price: str, quantity: int) -> str:
         """
@@ -130,6 +140,7 @@ class StripeTools:
         """
         return cls.get_api().run("create_payment_link", price=price, quantity=quantity)
 
+    @traced(type="tool")
     @classmethod
     def create_invoice(cls, customer: str, days_until_due: int = 30) -> str:
         """
@@ -144,6 +155,7 @@ class StripeTools:
         """
         return cls.get_api().run("create_invoice", customer=customer, days_until_due=days_until_due)
 
+    @traced(type="tool")
     @classmethod
     def create_invoice_item(cls, customer: str, price: str, invoice: str) -> str:
         """
@@ -159,6 +171,7 @@ class StripeTools:
         """
         return cls.get_api().run("create_invoice_item", customer=customer, price=price, invoice=invoice)
 
+    @traced(type="tool")
     @classmethod
     def finalize_invoice(cls, invoice: str) -> str:
         """
@@ -172,6 +185,7 @@ class StripeTools:
         """
         return cls.get_api().run("finalize_invoice", invoice=invoice)
 
+    @traced(type="tool")
     @classmethod
     def create_refund(cls, payment_intent: str, amount: Optional[int] = None) -> str:
         """

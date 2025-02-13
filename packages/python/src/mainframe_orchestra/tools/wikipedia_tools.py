@@ -2,8 +2,10 @@
 
 import requests
 from typing import List, Dict, Optional
+from ..utils.braintrust_utils import traced
 
 class WikipediaTools:
+    @traced(type="tool")
     @staticmethod
     def get_article(title, include_images=False):
         """
@@ -59,6 +61,7 @@ class WikipediaTools:
             print(f"Error parsing response: {e}")
             return None
 
+    @traced(type="tool")
     @staticmethod
     def search_articles(query: str, num_results: int = 10) -> List[Dict[str, str]]:
         """
@@ -135,6 +138,7 @@ class WikipediaTools:
             print(f"Error parsing response: {e}")
             return []
 
+    @traced(type="tool")
     @staticmethod
     def get_main_image(title: str, thumb_size: int = 250) -> Optional[str]:
         """
@@ -183,6 +187,7 @@ class WikipediaTools:
             print(f"Error parsing response: {e}")
             return None
 
+    @traced(type="tool")
     @staticmethod
     def search_images(query: str, limit: int = 20, thumb_size: int = 250) -> List[Dict[str, str]]:
         """

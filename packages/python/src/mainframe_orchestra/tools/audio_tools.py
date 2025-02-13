@@ -4,6 +4,7 @@ import os
 from typing import List, Dict, Optional, Literal, Union
 from dotenv import load_dotenv
 import requests
+from ..utils.braintrust_utils import traced
 from openai import OpenAI
 import time
 import io
@@ -28,6 +29,7 @@ def check_pygame():
         raise ImportError("pygame is required for audio playback. Install with `pip install pygame`")
 
 class TextToSpeechTools:
+    @traced(type="tool")
     @staticmethod
     def elevenlabs_text_to_speech(text: str, voice: str = "Giovanni", output_file: str = None):
         """
@@ -67,6 +69,7 @@ class TextToSpeechTools:
             play(audio)
         return audio
 
+    @traced(type="tool")
     @staticmethod
     def openai_text_to_speech(text: str, voice: str = "onyx", output_file: str = None):
         """
@@ -118,6 +121,7 @@ class TextToSpeechTools:
             pygame.mixer.quit()
 
 class WhisperTools:
+    @traced(type="tool")
     @staticmethod
     def whisper_transcribe_audio(
         audio_input: Union[str, List[str]],
@@ -181,6 +185,7 @@ class WhisperTools:
         else:
             raise ValueError('Invalid input type. Expected string or list of strings.')
 
+    @traced(type="tool")
     @staticmethod
     def whisper_translate_audio(
         audio_input: Union[str, List[str]],

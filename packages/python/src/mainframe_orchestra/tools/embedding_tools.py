@@ -5,6 +5,7 @@ from typing import List, Dict, Union, Literal, Tuple
 from dotenv import load_dotenv
 import requests
 import time
+from ..utils.braintrust_utils import traced
 
 # Load environment variables
 load_dotenv()
@@ -30,6 +31,7 @@ class EmbeddingsTools:
         "mistral-embed": 1024
     }
 
+    @traced(type="tool")
     @staticmethod
     def get_model_dimension(provider: str, model: str) -> int:
         """
@@ -51,6 +53,7 @@ class EmbeddingsTools:
         
         raise ValueError(f"Unsupported embedding model: {model} for provider: {provider}")
 
+    @traced(type="tool")
     @staticmethod
     def get_openai_embeddings(
         input_text: Union[str, List[str]],
@@ -118,6 +121,7 @@ class EmbeddingsTools:
         except requests.exceptions.RequestException as e:
             raise requests.exceptions.RequestException(f"Error making request to OpenAI API: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def get_cohere_embeddings(
         input_text: Union[str, List[str]],
@@ -170,6 +174,7 @@ class EmbeddingsTools:
         except Exception as e:
             raise RuntimeError(f"Failed to get embeddings from Cohere API: {str(e)}")
 
+    @traced(type="tool")
     @staticmethod
     def get_mistral_embeddings(
         input_text: Union[str, List[str]],
@@ -233,6 +238,7 @@ class EmbeddingsTools:
                 error_details = str(e)
             raise requests.exceptions.RequestException(f"Error making request to Mistral AI API: {error_details}")
 
+    @traced(type="tool")
     @staticmethod
     def get_embeddings(input_text: Union[str, List[str]], provider: str, model: str) -> Tuple[List[List[float]], Dict[str, int]]:
         """

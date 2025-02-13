@@ -2,12 +2,14 @@ from typing import Dict, Any, List, Optional
 import requests
 import base64
 import os
+from ..utils.braintrust_utils import traced
 
 # Define custom tools
 class GitHubTools:
     _owner: Optional[str] = None
     _repo: Optional[str] = None
 
+    @traced(type="tool")
     @staticmethod
     def configure() -> None:
         """
@@ -26,6 +28,7 @@ class GitHubTools:
         GitHubTools._owner = owner
         GitHubTools._repo = repo
 
+    @traced(type="tool")
     @staticmethod
     def _get_headers(auth_required: bool = False):
         """
@@ -44,6 +47,7 @@ class GitHubTools:
         return headers
 
 
+    @traced(type="tool")
     @staticmethod
     def get_user_info(username: str) -> Dict[str, Any]:
         """
@@ -65,6 +69,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @staticmethod
     def list_user_repos(username: str) -> List[Dict[str, Any]]:
         """
@@ -86,6 +91,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @staticmethod
     def get_repo_details(owner: str, repo: str) -> Dict[str, Any]:
         """
@@ -108,6 +114,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @staticmethod
     def list_repo_contributors(owner: str, repo: str) -> List[Dict[str, Any]]:
         """
@@ -130,6 +137,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @staticmethod
     def get_repo_readme(owner: str, repo: str) -> Dict[str, str]:
         """
@@ -157,6 +165,7 @@ class GitHubTools:
             "name": data["name"]
         }
 
+    @traced(type="tool")
     @staticmethod
     def search_repositories(query: str, sort: str = "stars", max_results: int = 10) -> Dict[str, Any]:
         """
@@ -193,6 +202,7 @@ class GitHubTools:
             "items": data["items"][:max_results]
         }
 
+    @traced(type="tool")
     @staticmethod
     def search_code(query: str, owner: str = None, repo: str = None, max_results: int = 10) -> Dict[str, Any]:
         """
@@ -238,6 +248,7 @@ class GitHubTools:
             "items": data["items"][:max_results]
         }
 
+    @traced(type="tool")
     @staticmethod
     def list_pull_requests(state: str = "open") -> List[Dict[str, Any]]:
         """
@@ -288,6 +299,7 @@ class GitHubTools:
 
         return [simplify_pr(pr) for pr in response.json()]
 
+    @traced(type="tool")
     @staticmethod
     def get_pull_request(pull_number: int) -> Dict[str, Any]:
         """
@@ -312,6 +324,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @staticmethod
     def list_pull_request_commits(pull_number: int) -> List[Dict[str, Any]]:
         """
@@ -349,6 +362,7 @@ class GitHubTools:
 
         return [simplify_commit(commit) for commit in response.json()]
 
+    @traced(type="tool")
     @staticmethod
     def list_pull_request_files(pull_number: int) -> List[Dict[str, Any]]:
         """
@@ -386,6 +400,7 @@ class GitHubTools:
 
         return [simplify_file(file) for file in response.json()]
 
+    @traced(type="tool")
     @staticmethod
     def get_directory_structure(path: str = "") -> Dict[str, Any]:
         """
@@ -411,6 +426,7 @@ class GitHubTools:
                 structure[item['name']] = item['type']
         return structure
 
+    @traced(type="tool")
     @staticmethod
     def get_repo_contents(path: str = "") -> List[Dict[str, Any]]:
         """
@@ -448,6 +464,7 @@ class GitHubTools:
             "download_url": item.get("download_url")
         } for item in contents]
 
+    @traced(type="tool")
     @staticmethod
     def get_file_content(path: str) -> Dict[str, Any]:
         """
@@ -479,6 +496,7 @@ class GitHubTools:
             "path": data["path"]
         }
 
+    @traced(type="tool")
     @staticmethod
     def get_issue_comments(issue_number: int) -> List[Dict[str, Any]]:
         """
@@ -528,6 +546,7 @@ class GitHubTools:
 
         return result
 
+    @traced(type="tool")
     @staticmethod
     def create_issue_comment(issue_number: int, body: str) -> Dict[str, Any]:
         """
@@ -554,6 +573,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @staticmethod
     def list_repo_issues(state: str = "open") -> List[Dict[str, Any]]:
         """
@@ -595,6 +615,7 @@ class GitHubTools:
 
         return [simplify_issue(issue) for issue in response.json()]
 
+    @traced(type="tool")
     @staticmethod
     def check_github_diff(base: str, head: str, file_path: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -673,6 +694,7 @@ class GitHubTools:
 
         return result
 
+    @traced(type="tool")
     @staticmethod
     def update_file(path: str, message: str, content: str, branch: str) -> Dict[str, Any]:
         """
@@ -720,6 +742,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
     
+    @traced(type="tool")
     @staticmethod
     def get_default_branch() -> str:
         """
@@ -741,6 +764,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()["default_branch"]
 
+    @traced(type="tool")
     @staticmethod
     def create_branch(branch_name: str) -> Dict[str, Any]:
         """
@@ -779,6 +803,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @staticmethod
     def commit_file(path: str, content: str, message: str, branch: str) -> Dict[str, Any]:
         """
@@ -825,6 +850,7 @@ class GitHubTools:
         response.raise_for_status()
         return response.json()
 
+    @traced(type="tool")
     @staticmethod
     def create_pull_request(title: str, body: str, head: str, base: str = None) -> Dict[str, Any]:
         """

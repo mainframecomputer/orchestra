@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, Tuple, Union
 from dotenv import load_dotenv
 import requests
 from datetime import datetime, timedelta
+from ..utils.braintrust_utils import traced
 
 class AmadeusTools:
     @staticmethod
@@ -28,6 +29,7 @@ class AmadeusTools:
         response.raise_for_status()
         return response.json()["access_token"]
 
+    @traced(type="tool")
     @staticmethod
     def search_flights(
         origin: str,
@@ -106,6 +108,7 @@ class AmadeusTools:
                 error_message += f"\nResponse content: {e.response.text}"
             return error_message
 
+    @traced(type="tool")
     @staticmethod
     def get_cheapest_date(
         origin: str,
@@ -196,6 +199,7 @@ class AmadeusTools:
         
         return result
 
+    @traced(type="tool")
     @staticmethod
     def get_flight_inspiration(
         origin: str,
