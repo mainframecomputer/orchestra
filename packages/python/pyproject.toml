@@ -44,6 +44,7 @@ leidenalg = "*"
 fake-useragent = "*"
 google-generativeai = "*"
 tzdata = "^2024.2"
+braintrust = "*"
 
 [tool.poetry.extras]
 langchain_tools = [
