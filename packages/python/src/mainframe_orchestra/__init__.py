@@ -5,49 +5,52 @@ Mainframe Orchestra: a Python framework for building and orchestrating multi-age
 
 __version__ = "0.0.22"
 
-from .task import Task
-from .agent import Agent
-from .config import Config
-from .orchestration import Conduct, Compose, TaskInstruction
-from .llm import (
-    set_verbosity,
-    OpenaiModels,
-    OpenrouterModels,
-    AnthropicModels,
-    OllamaModels,
-    GroqModels,
-    TogetheraiModels,
-    GeminiModels,
-    DeepseekModels
-)
-from .tools import (
-    FileTools,
-    EmbeddingsTools,
-    WebTools,
-    GitHubTools,
-    WikipediaTools,
-    AmadeusTools,
-    CalculatorTools,
-    FAISSTools,
-    PineconeTools,
-    LinearTools,
-    SemanticSplitter,
-    SentenceSplitter,
-    WhisperTools 
-)
+import importlib
 
 # Conditional imports for optional dependencies
 import sys
-import importlib
 from typing import TYPE_CHECKING
 
+from .agent import Agent
+from .config import Config
+from .llm import (
+    AnthropicModels,
+    DeepseekModels,
+    GeminiModels,
+    GroqModels,
+    HuggingFaceModels,
+    OllamaModels,
+    OpenaiModels,
+    OpenrouterModels,
+    TogetheraiModels,
+    set_verbosity,
+)
+from .orchestration import Compose, Conduct, TaskInstruction
+from .task import Task
+from .tools import (
+    AmadeusTools,
+    CalculatorTools,
+    EmbeddingsTools,
+    FAISSTools,
+    FileTools,
+    GitHubTools,
+    LinearTools,
+    PineconeTools,
+    SemanticSplitter,
+    SentenceSplitter,
+    WebTools,
+    WhisperTools,
+    WikipediaTools,
+)
+
 if TYPE_CHECKING:
+    from .tools.audio_tools import TextToSpeechTools, WhisperTools
+    from .tools.fred_tools import FredTools
     from .tools.langchain_tools import LangchainTools
     from .tools.matplotlib_tools import MatplotlibTools
+    from .tools.stripe_tools import StripeTools
     from .tools.yahoo_finance_tools import YahooFinanceTools
-    from .tools.fred_tools import FredTools
-    from .tools.audio_tools import WhisperTools, TextToSpeechTools
-    from .tools.stripe_tools import StripeTools 
+
 
 def __getattr__(name):
     package_map = {
@@ -95,7 +98,6 @@ __all__ = [
     "config",
     "Utils",
     "set_verbosity",
-
     # LLM Provider Models
     "OpenaiModels",
     "AnthropicModels",
@@ -105,6 +107,7 @@ __all__ = [
     "TogetheraiModels",
     "GeminiModels",
     "DeepseekModels",
+    "HuggingFaceModels",
     # List core tools
     "FileTools",
     "EmbeddingsTools",
