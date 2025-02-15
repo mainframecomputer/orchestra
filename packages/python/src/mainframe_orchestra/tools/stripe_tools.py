@@ -17,15 +17,15 @@ class StripeTools:
             context=Context()
         )
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def get_api(cls):
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance.api
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def check_balance(cls) -> str:
         """
         Retrieve the current balance of your Stripe account.
@@ -35,8 +35,8 @@ class StripeTools:
         """
         return cls.get_api().run("retrieve_balance")
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def list_customers(cls, email: Optional[str] = None, limit: Optional[int] = None) -> str:
         """
         List customers from your Stripe account with optional filtering.

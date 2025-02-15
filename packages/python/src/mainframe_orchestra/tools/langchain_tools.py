@@ -54,8 +54,8 @@ class LangchainTools:
         wrapped_tool.__name__ = name
         wrapped_tool.__doc__ = "\n".join(doc_parts)
         return wrapped_tool
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def get_tool(cls, tool_name: str):
         cls._check_dependencies()
         from langchain_community.tools import _module_lookup
@@ -95,8 +95,8 @@ class LangchainTools:
         
         return list(_module_lookup.keys())
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def get_tool_info(cls, tool_name: str) -> dict:
         """
         Retrieve information about a specific Langchain tool.

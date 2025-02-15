@@ -36,8 +36,8 @@ class LinearTools:
         response.raise_for_status()
         return response.json()
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def get_team_issues(cls, team_id: str = None, status: Optional[str] = None) -> Union[List[Dict], str]:
         try:
             client = cls()
@@ -73,8 +73,8 @@ class LinearTools:
         except Exception as e:
             return f"Error fetching team issues: {str(e)}"
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def update_issue_status(cls, issue_id: str, status_id: str) -> Union[Dict, str]:
         """
         Update the status of an issue.
@@ -114,8 +114,8 @@ class LinearTools:
         except Exception as e:
             return f"Error updating issue status: {str(e)}"
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def search_issues(cls, search_query: str) -> Union[List[Dict], str]:
         """
         Search for issues using a text query.
@@ -152,8 +152,8 @@ class LinearTools:
         except Exception as e:
             return f"Error searching issues: {str(e)}"
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def get_team_by_name(cls, team_name: str) -> Union[Dict, str]:
         """
         Get team ID by team name.
@@ -193,8 +193,8 @@ class LinearTools:
         except Exception as e:
             return f"Error fetching team: {str(e)}"
 
-    @traced(type="tool")
     @classmethod
+    @traced(type="tool")
     def get_workflow_states(cls, team_id: str = None) -> Union[List[Dict], str]:
         """
         Get all workflow states for a team.
