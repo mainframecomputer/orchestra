@@ -141,7 +141,7 @@ Error handling is built into these methods, with appropriate exceptions being ra
 
 Here's an example of how you might create a semantic search agent using these tools:
 
-[triplebacktick]python
+```python
 semantic_search_agent = Agent(
     role="Semantic Search Expert",
     goal="Perform efficient and accurate semantic searches on large datasets",
@@ -162,7 +162,7 @@ index_path = "/path/to/your/specific_index_name"
 query = "Example search query"
 results = semantic_search_task(semantic_search_agent, query, index_path)
 print(results)
-[triplebacktick]
+```
 
 This semantic search agent can leverage the FAISSTools to load pre-built indexes, perform similarity searches, and return relevant results based on vector embeddings.
 
