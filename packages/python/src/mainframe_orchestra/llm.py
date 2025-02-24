@@ -312,6 +312,7 @@ class OpenaiModels:
             # Non-streaming logic
             spinner.text = f"Waiting for {model} response..."
             response: OpenAIChatCompletion = await client.chat.completions.create(**request_params)
+            
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
 
