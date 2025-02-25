@@ -99,6 +99,59 @@ llm = OllamaModels.custom_model("llama3")
 
 This approach allows you to use models that may not have pre-built functions in Orchestra, or to easily switch between different versions or fine-tuned variants of models. Remember to ensure that you have the necessary API access and credentials for the custom model you're trying to use.
 
+### Customizing OpenAI Base URL
+
+Orchestra provides flexibility to customize the OpenAI base URL, allowing you to connect to OpenAI-compatible APIs or proxies. This is particularly useful for:
+
+- Using Azure OpenAI endpoints
+- Connecting to local deployments of OpenAI-compatible models
+- Using proxy services that implement the OpenAI API
+- Working with custom OpenAI-compatible endpoints
+
+There are three ways to customize the OpenAI base URL:
+
+#### 1. Using Environment Variables
+
+Set the `OPENAI_BASE_URL` environment variable before running your application:
+
+```python
+import os
+os.environ["OPENAI_BASE_URL"] = "https://your-custom-endpoint.com/v1"
+
+# Now all OpenAI requests will use the custom base URL
+from mainframe_orchestra import Agent, Task, OpenaiModels
+```
+
+#### 2. Setting a Global Base URL
+
+Use the `set_base_url` class method to set a default base URL for all OpenAI requests:
+
+```python
+from mainframe_orchestra.llm import OpenaiModels
+
+# Set a global base URL for all OpenAI requests
+OpenaiModels.set_base_url("https://your-custom-endpoint.com/v1")
+
+# All subsequent requests will use this base URL
+response, error = await OpenaiModels.gpt_4o(messages=[{"role": "user", "content": "Hello"}])
+```
+
+#### 3. Per-Request Base URL
+
+Specify a custom base URL for a specific request:
+
+```python
+from mainframe_orchestra.llm import OpenaiModels
+
+# Use a custom base URL for this specific request only
+response, error = await OpenaiModels.gpt_4o(
+    messages=[{"role": "user", "content": "Hello"}],
+    base_url="https://your-custom-endpoint.com/v1"
+)
+```
+
+This flexibility allows you to easily switch between different OpenAI-compatible endpoints based on your specific needs, without changing your code structure.
+
 ### Conclusion
 
 The Orchestra framework provides a robust and flexible approach to integrating a wide range of language models. By allowing language model selection at the task level and providing a consistent interface across different providers, Orchestra empowers developers to optimize their AI workflows for specific use cases while maintaining code simplicity and reusability.
