@@ -1803,5 +1803,5 @@ class HuggingFaceModels:
         return wrapper
 
     # Add commonly used models
-    qwen2_5_Coder = custom_model("Qwen/Qwen2.5-Coder-32B-Instruct")
+    qwen2_5_coder = custom_model("Qwen/Qwen2.5-Coder-32B-Instruct")
     meta_llama_3_8b = custom_model("meta-llama/Meta-Llama-3-8B-Instruct")
