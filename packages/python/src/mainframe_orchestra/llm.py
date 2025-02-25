@@ -312,7 +312,7 @@ class OpenaiModels:
             # Non-streaming logic
             spinner.text = f"Waiting for {model} response..."
             response: OpenAIChatCompletion = await client.chat.completions.create(**request_params)
-
+            
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
 
@@ -320,8 +320,10 @@ class OpenaiModels:
                 # Attempt to parse the API response as JSON and reformat it as compact, single-line JSON.
                 compact_response = json.dumps(json.loads(content.strip()), separators=(',', ':'))
             except ValueError:
-                # If it's not JSON, collapse any extra whitespace (including newlines) into a single space.
-                compact_response = " ".join(content.strip().split())
+                # If it's not JSON, preserve newlines but clean up extra whitespace within lines
+                lines = content.strip().splitlines()
+                compact_response = "\n".join(line.strip() for line in lines)
+
             logger.debug(f"API Response: {compact_response}")
             return compact_response, None
 
