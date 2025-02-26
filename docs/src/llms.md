@@ -22,7 +22,7 @@ Each class contains static methods corresponding to specific models offered by t
 Orchestra supports a wide range of language models from various providers. Here's an overview of some supported models:
 
 - OpenAI Models: GPT-3.5 Turbo, GPT-4 Turbo, GPT-4, GPT-4o
-- Anthropic Models: Claude-3 Opus, Claude-3 Sonnet, Claude-3 Haiku, Claude-3.5 Sonnet
+- Anthropic Models: Claude-3 Opus, Claude-3 Sonnet, Claude-3 Haiku, Claude-3.5 Sonnet, Claude-3.7 Sonnet
 - Openrouter Models: Various models including Anthropic Claude, OpenAI GPT, Llama, Mistral AI, and more
 - Ollama Models: Llama 3, Gemma, Mistral, Qwen, Phi-3, Llama 2, CodeLlama, LLaVA, Mixtral
 - Groq Models: Gemma, Llama3, Llama3.1, Mixtral
