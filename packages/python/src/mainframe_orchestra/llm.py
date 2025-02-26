@@ -602,6 +602,7 @@ class AnthropicModels:
     haiku = custom_model("claude-3-haiku-20240307")
     sonnet_3_5 = custom_model("claude-3-5-sonnet-latest")
     haiku_3_5 = custom_model("claude-3-5-haiku-latest")
+    sonnet_3_7 = custom_model("claude-3-7-sonnet-latest")
 
 
 class OpenrouterModels:
