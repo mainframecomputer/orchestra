@@ -626,9 +626,9 @@ class OpenrouterModels:
         spinner.start()
 
         try:
-            client = AsyncOpenAI(
+            client = wrap_openai(AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1", api_key=config.OPENROUTER_API_KEY
-            )
+            ))
             if not client.api_key:
                 raise ValueError("OpenRouter API key not found in environment variables.")
 
@@ -951,7 +951,10 @@ class GroqModels:
 
         try:
             api_key = config.validate_api_key("GROQ_API_KEY")
-            client = Groq(api_key=api_key)
+            client = wrap_openai(OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=api_key
+            ))
             if not client.api_key:
                 raise ValueError("Groq API key not found in environment variables.")
 
@@ -1071,7 +1074,7 @@ class TogetheraiModels:
 
         try:
             api_key = config.validate_api_key("TOGETHERAI_API_KEY")
-            client = OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
+            client = wrap_openai(OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1"))
 
             # Process images if present
             if image_data:
@@ -1425,10 +1428,10 @@ class DeepseekModels:
                 raise ValueError("DeepSeek API key not found in environment variables.")
 
             # Create an AsyncOpenAI client
-            client = AsyncOpenAI(
+            client = wrap_openai(AsyncOpenAI(
                 api_key=api_key,
                 base_url="https://api.deepseek.com/v1",
-            )
+            ))
 
             # Warn if image data was provided
             if image_data:
