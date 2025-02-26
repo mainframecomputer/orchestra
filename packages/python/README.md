@@ -99,7 +99,7 @@ Orchestra supports a wide range of language models from a number of providers:
 GPT-4o, GPT-4o Mini, & Custom defined models 
 
 ### Anthropic
-Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, Claude-3.7 Sonnet, & Custom defined models 
+Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, Claude 3.7 Sonnet, & Custom defined models 
 
 ### Openrouter
 GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & Custom defined models 
