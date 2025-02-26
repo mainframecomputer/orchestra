@@ -5,9 +5,14 @@ Utility module for handling optional Braintrust functionality.
 This module provides fallback decorators when Braintrust is not available.
 """
 
+import os
+
+# Check if Braintrust logging is explicitly disabled
+BRAINTRUST_DISABLED = os.environ.get("BRAINTRUST_ORCHESTRA_DISABLED", "").lower() in ("true", "1", "yes")
+
 try:
     from braintrust import traced, wrap_openai
-    BRAINTRUST_AVAILABLE = True
+    BRAINTRUST_AVAILABLE = True and not BRAINTRUST_DISABLED
 except ImportError:
     BRAINTRUST_AVAILABLE = False
     def traced(type=None):
