@@ -7,8 +7,12 @@ This module provides fallback decorators when Braintrust is not available.
 
 import os
 
-# Check if Braintrust integration is explicitly disabled via environment variable.
-BRAINTRUST_DISABLED = os.environ.get("BRAINTRUST_ORCHESTRA_DISABLED", "").lower() in ("true", "1", "yes")
+# Check if Braintrust integration is explicitly enabled or disabled via environment variable.
+# Default to enabled if API key is present and no explicit setting
+BRAINTRUST_API_KEY_EXISTS = os.environ.get("BRAINTRUST_API_KEY", "") != ""
+BRAINTRUST_ENABLED = os.environ.get("BRAINTRUST_ORCHESTRA_ENABLED", "").lower() in ("true", "1", "yes") or (
+    BRAINTRUST_API_KEY_EXISTS and os.environ.get("BRAINTRUST_ORCHESTRA_ENABLED", None) is None
+)
 
 # Default implementation of no-op decorators
 def traced(func=None, **kwargs):
@@ -23,8 +27,8 @@ def wrap_openai(func):
     """No-op decorator when Braintrust is not available"""
     return func
 
-# Try to import Braintrust if not disabled
-if not BRAINTRUST_DISABLED:
+# Try to import Braintrust if enabled
+if BRAINTRUST_ENABLED:
     try:
         from braintrust import traced, wrap_openai
     except ImportError:

@@ -12,16 +12,23 @@ To enable Braintrust integration:
    ```
    export BRAINTRUST_API_KEY=your_api_key
    ```
-3. Ensure the `BRAINTRUST_ORCHESTRA_DISABLED` environment variable is not set, or is set to False
+3. By default, Braintrust is automatically enabled when the API key is present
+
+To explicitly enable Braintrust integration:
+```
+export BRAINTRUST_ORCHESTRA_ENABLED=true
+```
 
 To disable Braintrust integration inside Orchestra:
 ```
-export BRAINTRUST_ORCHESTRA_DISABLED=true
+export BRAINTRUST_ORCHESTRA_ENABLED=false
 ```
 
-You can also use `1` or `yes` as values to disable it. Braintrust integration is automatically enabled when:
+You can also use `0` or `no` as values to disable it, or `1` or `yes` to enable it. Braintrust integration is automatically enabled when:
 1. The `braintrust` package is installed
 2. The `BRAINTRUST_API_KEY` environment variable is set with a valid API key
-3. The `BRAINTRUST_ORCHESTRA_DISABLED` environment variable is not set to disable it
+3. The `BRAINTRUST_ORCHESTRA_ENABLED` environment variable is either:
+   - Set to enable it (`true`, `1`, or `yes`)
+   - Not set at all (defaults to enabled when API key exists)
 
 When enabled, Braintrust will trace all tool calls and requests to OpenAI, OpenRouter, Groq, Together AI, and Deepseek, providing detailed logs and analytics in your Braintrust dashboard.
