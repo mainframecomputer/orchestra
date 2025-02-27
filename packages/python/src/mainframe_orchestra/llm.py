@@ -735,6 +735,7 @@ class OpenrouterModels:
     gpt_4 = custom_model("openai/gpt-4")
     gpt_4o = custom_model("openai/gpt-4o")
     gpt_4o_mini = custom_model("openai/gpt-4o-mini")
+    gpt_4_5_preview = custom_model("openai/gpt-4.5-preview")
     o1_preview = custom_model("openai/o1-preview")
     o1_mini = custom_model("openai/o1-mini")
     gemini_flash_1_5 = custom_model("google/gemini-flash-1.5")
