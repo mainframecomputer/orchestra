@@ -312,7 +312,7 @@ class OpenaiModels:
             # Non-streaming logic
             spinner.text = f"Waiting for {model} response..."
             response: OpenAIChatCompletion = await client.chat.completions.create(**request_params)
-            
+
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
 
@@ -385,6 +385,7 @@ class OpenaiModels:
     gpt_4o_mini = custom_model("gpt-4o-mini")
     o1_mini = custom_model("o1-mini")
     o1_preview = custom_model("o1-preview")
+    gpt_4_5_preview = custom_model("gpt-4.5-preview")
 
 
 class AnthropicModels:
@@ -687,7 +688,7 @@ class OpenrouterModels:
                     return compressed_content, None
                 except ValueError as e:
                     return "", e
-            
+
             # For non-JSON responses, keep original formatting but make single line
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
@@ -727,12 +728,14 @@ class OpenrouterModels:
     haiku_3_5 = custom_model("anthropic/claude-3.5-haiku")
     sonnet = custom_model("anthropic/claude-3-sonnet")
     sonnet_3_5 = custom_model("anthropic/claude-3.5-sonnet")
+    sonnet_3_7 = custom_model("anthropic/claude-3.7-sonnet")
     opus = custom_model("anthropic/claude-3-opus")
     gpt_3_5_turbo = custom_model("openai/gpt-3.5-turbo")
     gpt_4_turbo = custom_model("openai/gpt-4-turbo")
     gpt_4 = custom_model("openai/gpt-4")
     gpt_4o = custom_model("openai/gpt-4o")
     gpt_4o_mini = custom_model("openai/gpt-4o-mini")
+    gpt_4_5_preview = custom_model("openai/gpt-4.5-preview")
     o1_preview = custom_model("openai/o1-preview")
     o1_mini = custom_model("openai/o1-mini")
     gemini_flash_1_5 = custom_model("google/gemini-flash-1.5")
@@ -837,7 +840,7 @@ class OllamaModels:
                                     options={"temperature": temperature, "num_predict": max_tokens},
                                     stream=True,
                                 )
-                                
+
                                 for chunk in response:
                                     if chunk and "message" in chunk and "content" in chunk["message"]:
                                         content = chunk["message"]["content"]
@@ -1012,7 +1015,7 @@ class GroqModels:
                     return compressed_content, None
                 except ValueError as e:
                     return "", e
-            
+
             # For non-JSON responses, keep original formatting but make single line
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
@@ -1084,7 +1087,7 @@ class TogetheraiModels:
                     content = []
                     if isinstance(image_data, str):
                         image_data = [image_data]
-                    
+
                     for i, image in enumerate(image_data, start=1):
                         content.append({"type": "text", "text": f"Image {i}:"})
                         if image.startswith(("http://", "https://")):
@@ -1097,7 +1100,7 @@ class TogetheraiModels:
                                 "type": "image_url",
                                 "image_url": {"url": f"data:image/jpeg;base64,{image}"}
                             })
-                    
+
                     # Add original text content
                     content.append({"type": "text", "text": last_user_msg["content"]})
                     last_user_msg["content"] = content
@@ -1120,7 +1123,7 @@ class TogetheraiModels:
                             response_format={"type": "json_object"} if require_json_output else None,
                             stream=True
                         )
-                        
+
                         for chunk in response:
                             if chunk.choices[0].delta.content:
                                 content = chunk.choices[0].delta.content
@@ -1128,11 +1131,11 @@ class TogetheraiModels:
                                 yield content
                         logger.debug("Stream complete")
                         logger.debug(f"Full message: {full_message}")
-                        yield "\n" 
+                        yield "\n"
                     except Exception as e:
                         logger.error(f"An error occurred during streaming: {e}")
                         yield ""
-                        yield "\n" 
+                        yield "\n"
 
                 return stream_generator()
 
@@ -1148,7 +1151,7 @@ class TogetheraiModels:
 
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
-            
+
             # Compress the response to single line if it's JSON
             if require_json_output:
                 try:
@@ -1158,7 +1161,7 @@ class TogetheraiModels:
                     return compressed_content, None
                 except ValueError as e:
                     return "", e
-            
+
             # For non-JSON responses, keep original formatting but make single line
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
@@ -1216,7 +1219,7 @@ class GeminiModels:
         """
         # Create spinner only once at the start
         spinner = Halo(text=f"Sending request to Gemini ({model})...", spinner="dots")
-        
+
         try:
             # Start spinner
             spinner.start()
@@ -1229,7 +1232,7 @@ class GeminiModels:
                 "temperature": temperature,
                 "max_output_tokens": max_tokens,
             }
-            
+
             if require_json_output:
                 generation_config.update({
                     "response_mime_type": "application/json"
@@ -1247,7 +1250,7 @@ class GeminiModels:
                 last_user_message = next((msg["content"] for msg in reversed(messages) if msg["role"] == "user"), "")
                 full_message = ""
                 logger.debug("Stream started")
-                
+
                 try:
                     response = model_instance.generate_content(last_user_message, stream=True)
                     for chunk in response:
@@ -1255,7 +1258,7 @@ class GeminiModels:
                             content = chunk.text
                             full_message += content
                             yield content
-                    
+
                     logger.debug("Stream complete")
                     logger.debug(f"Full message: {full_message}")
                 except Exception as e:
@@ -1264,13 +1267,13 @@ class GeminiModels:
             else:
                 # Non-streaming: Use chat format
                 chat = model_instance.start_chat(history=[])
-                
+
                 # Process messages and images
                 if messages:
                     for msg in messages:
                         role = msg["role"]
                         content = msg["content"]
-                        
+
                         if role == "user":
                             if image_data and msg == messages[-1]:
                                 parts = []
@@ -1508,7 +1511,7 @@ class DeepseekModels:
             # Non-streaming logic
             spinner.text = f"Waiting for {model} response..."
             response = await client.chat.completions.create(**request_params)
-            
+
             if model == "deepseek-reasoner":
                 reasoning = response.choices[0].message.reasoning_content
                 content = response.choices[0].message.content
@@ -1564,7 +1567,7 @@ class DeepseekModels:
             )
 
         return wrapper
-    
+
     # Model-specific methods using custom_model
     chat = custom_model("deepseek-chat")
     reasoner = custom_model("deepseek-reasoner")

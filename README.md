@@ -1,6 +1,6 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/mainframecomputer/orchestra/issues)
 [![PyPI version](https://badge.fury.io/py/mainframe-orchestra.svg)](https://pypi.org/project/mainframe-orchestra/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Twitter](https://img.shields.io/twitter/follow/orchestraorg?label=Follow%20@orchestraorg&style=social)](https://twitter.com/orchestraorg)
 
 # Orchestra
@@ -96,25 +96,25 @@ print(result)
 Orchestra supports a wide range of language models from a number of providers:
 
 ### OpenAI
-GPT-4o, GPT-4o Mini, & Custom defined models 
+GPT-4.5-preview, GPT-4o, GPT-4o Mini, & Custom defined models
 
 ### Anthropic
-Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, Claude 3.7 Sonnet, & Custom defined models 
+Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, Claude 3.7 Sonnet, & Custom defined models
 
 ### Openrouter
-GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & Custom defined models 
+GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & Custom defined models
 
 ### Ollama
-Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & Custom defined models 
+Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & Custom defined models
 
 ### Groq
 Mixtral 8x7B, Llama 3, Llama 3.1, Gemma, & Custom defined models
 
 ### TogetherAI
-Custom defined models 
+Custom defined models
 
 ### Gemini
-Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models 
+Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models
 
 ### Deepseek
 Deepseek Reasoner, Deepseek Chat, & Custom defined models

@@ -3,7 +3,7 @@ Mainframe Orchestra: a Python framework for building and orchestrating multi-age
 """
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-__version__ = "0.0.24"
+__version__ = "0.0.25"
 
 from .task import Task
 from .agent import Agent
@@ -33,7 +33,7 @@ from .tools import (
     LinearTools,
     SemanticSplitter,
     SentenceSplitter,
-    WhisperTools 
+    WhisperTools
 )
 
 # Conditional imports for optional dependencies
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from .tools.yahoo_finance_tools import YahooFinanceTools
     from .tools.fred_tools import FredTools
     from .tools.audio_tools import WhisperTools, TextToSpeechTools
-    from .tools.stripe_tools import StripeTools 
+    from .tools.stripe_tools import StripeTools
 
 def __getattr__(name):
     package_map = {
