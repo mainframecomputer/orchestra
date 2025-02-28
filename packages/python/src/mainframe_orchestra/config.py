@@ -13,6 +13,7 @@ class Config(ABC):
 
     # LLM Provider API Keys
     OPENAI_API_KEY: Optional[str] = None
+    OPENAI_BASE_URL: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
@@ -43,6 +44,7 @@ class EnvConfig(Config):
     def __init__(self):
         # Initialize LLM Provider API Keys from environment variables
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        self.OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
         self.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
         self.GROQ_API_KEY = os.getenv("GROQ_API_KEY")
         self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
