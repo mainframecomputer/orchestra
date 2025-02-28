@@ -45,6 +45,8 @@ fake-useragent = "*"
 google-generativeai = "*"
 tzdata = "^2024.2"
 braintrust = "*"
+mcp = "*"
+fastmcp = "*"
 
 [tool.poetry.extras]
 langchain_tools = [

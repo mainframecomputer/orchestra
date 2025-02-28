@@ -35,6 +35,7 @@ from .tools import (
     SentenceSplitter,
     WhisperTools
 )
+from .adapters import MCPOrchestra
 
 # Conditional imports for optional dependencies
 import sys
@@ -90,6 +91,7 @@ __all__ = [
     "Conduct",
     "Compose",
     "TaskInstruction",
+
     # Configuration and Utilities
     "Config",
     "config",
@@ -105,6 +107,7 @@ __all__ = [
     "TogetheraiModels",
     "GeminiModels",
     "DeepseekModels",
+
     # List core tools
     "FileTools",
     "EmbeddingsTools",
@@ -119,6 +122,7 @@ __all__ = [
     "SemanticSplitter",
     "SentenceSplitter",
     "WhisperTools",
+
     # Optional tools
     "LangchainTools",
     "MatplotlibTools",
@@ -126,4 +130,7 @@ __all__ = [
     "TextToSpeechTools",
     "FredTools",
     "StripeTools",
+
+    # Adapters
+    "MCPOrchestra",
 ]
