@@ -277,7 +277,7 @@ The `Conduct` and `Compose` tools are used to orchestrate and compose agents. Co
 
 By combining agents, tasks, tools, and language models, you can create a wide range of workflows, from simple pipelines to complex multi-agent teams.
 
-#### MCP Integration
+## MCP Integration
 - **MCPOrchestra**: Adapter for integrating with Model Context Protocol (MCP) servers, allowing agents to use tools implemented in any programming language
   - Connect to FastMCP, Playwright, Slack, Filesystem, and other MCP-compatible servers
   - Seamlessly convert external tools into Orchestra-compatible callables
