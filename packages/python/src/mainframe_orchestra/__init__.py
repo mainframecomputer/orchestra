@@ -3,7 +3,7 @@ Mainframe Orchestra: a Python framework for building and orchestrating multi-age
 """
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-__version__ = "0.0.22"
+__version__ = "0.0.25"
 
 import importlib
 
@@ -50,6 +50,9 @@ if TYPE_CHECKING:
     from .tools.matplotlib_tools import MatplotlibTools
     from .tools.stripe_tools import StripeTools
     from .tools.yahoo_finance_tools import YahooFinanceTools
+    from .tools.fred_tools import FredTools
+    from .tools.audio_tools import WhisperTools, TextToSpeechTools
+    from .tools.stripe_tools import StripeTools
 
 
 def __getattr__(name):

@@ -356,8 +356,10 @@ class OpenaiModels:
                 # Attempt to parse the API response as JSON and reformat it as compact, single-line JSON.
                 compact_response = json.dumps(json.loads(content.strip()), separators=(",", ":"))
             except ValueError:
-                # If it's not JSON, collapse any extra whitespace (including newlines) into a single space.
-                compact_response = " ".join(content.strip().split())
+                # If it's not JSON, preserve newlines but clean up extra whitespace within lines
+                lines = content.strip().splitlines()
+                compact_response = "\n".join(line.strip() for line in lines)
+
             logger.debug(f"API Response: {compact_response}")
             return compact_response, None
 
@@ -421,6 +423,7 @@ class OpenaiModels:
     gpt_4o_mini = custom_model("gpt-4o-mini")
     o1_mini = custom_model("o1-mini")
     o1_preview = custom_model("o1-preview")
+    gpt_4_5_preview = custom_model("gpt-4.5-preview")
 
 
 class AnthropicModels:
@@ -651,6 +654,7 @@ class AnthropicModels:
     haiku = custom_model("claude-3-haiku-20240307")
     sonnet_3_5 = custom_model("claude-3-5-sonnet-latest")
     haiku_3_5 = custom_model("claude-3-5-haiku-latest")
+    sonnet_3_7 = custom_model("claude-3-7-sonnet-latest")
 
 
 class OpenrouterModels:
@@ -675,9 +679,9 @@ class OpenrouterModels:
         spinner.start()
 
         try:
-            client = AsyncOpenAI(
+            client = wrap_openai(AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1", api_key=config.OPENROUTER_API_KEY
-            )
+            ))
             if not client.api_key:
                 raise ValueError("OpenRouter API key not found in environment variables.")
 
@@ -779,12 +783,14 @@ class OpenrouterModels:
     haiku_3_5 = custom_model("anthropic/claude-3.5-haiku")
     sonnet = custom_model("anthropic/claude-3-sonnet")
     sonnet_3_5 = custom_model("anthropic/claude-3.5-sonnet")
+    sonnet_3_7 = custom_model("anthropic/claude-3.7-sonnet")
     opus = custom_model("anthropic/claude-3-opus")
     gpt_3_5_turbo = custom_model("openai/gpt-3.5-turbo")
     gpt_4_turbo = custom_model("openai/gpt-4-turbo")
     gpt_4 = custom_model("openai/gpt-4")
     gpt_4o = custom_model("openai/gpt-4o")
     gpt_4o_mini = custom_model("openai/gpt-4o-mini")
+    gpt_4_5_preview = custom_model("openai/gpt-4.5-preview")
     o1_preview = custom_model("openai/o1-preview")
     o1_mini = custom_model("openai/o1-mini")
     gemini_flash_1_5 = custom_model("google/gemini-flash-1.5")
@@ -1014,7 +1020,10 @@ class GroqModels:
 
         try:
             api_key = config.validate_api_key("GROQ_API_KEY")
-            client = Groq(api_key=api_key)
+            client = wrap_openai(OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=api_key
+            ))
             if not client.api_key:
                 raise ValueError("Groq API key not found in environment variables.")
 
@@ -1138,7 +1147,7 @@ class TogetheraiModels:
 
         try:
             api_key = config.validate_api_key("TOGETHERAI_API_KEY")
-            client = OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
+            client = wrap_openai(OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1"))
 
             # Process images if present
             if image_data:
@@ -1155,12 +1164,10 @@ class TogetheraiModels:
                         if image.startswith(("http://", "https://")):
                             content.append({"type": "image_url", "image_url": {"url": image}})
                         else:
-                            content.append(
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                                }
-                            )
+                            content.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{image}"}
+                            })
 
                     # Add original text content
                     content.append({"type": "text", "text": last_user_msg["content"]})
@@ -1497,10 +1504,10 @@ class DeepseekModels:
                 raise ValueError("DeepSeek API key not found in environment variables.")
 
             # Create an AsyncOpenAI client
-            client = AsyncOpenAI(
+            client = wrap_openai(AsyncOpenAI(
                 api_key=api_key,
                 base_url="https://api.deepseek.com/v1",
-            )
+            ))
 
             # Warn if image data was provided
             if image_data:

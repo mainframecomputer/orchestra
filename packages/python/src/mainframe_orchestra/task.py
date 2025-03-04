@@ -111,8 +111,8 @@ def parse_json_response(response: str) -> dict:
                 cleaned_json = re.sub(comment_pattern, "", cleaved_json, flags=re.DOTALL)
                 return json.loads(cleaned_json)
             except json.JSONDecodeError as e:
-                logger.error(f"All JSON parsing attempts failed: {e}")
-                raise ValueError(f"Invalid JSON structure: {e}")
+                logger.error(f"All JSON parsing attempts failed: {e}.\nFailed response: {response}")
+                raise ValueError(f"Invalid JSON structure: {e}\nFailed response: {response}")
 
 
 def serialize_result(obj: Any) -> Union[str, Dict[str, Any], List[Any]]:
