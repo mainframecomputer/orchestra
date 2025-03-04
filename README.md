@@ -27,6 +27,9 @@ Cognitive Architectures for Multi-Agent Teams.
   - [Custom Tools](#custom-tools)
 - [Multi-Agent Teams](#multi-agent-teams)
   - [Example: Finance Analysis Team](#example-finance-analysis-team)
+- [Conduct and Compose](#conduct-and-compose)
+- [MCP Integration](#mcp-integration)
+- [Streaming Support](#streaming-support)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
@@ -278,12 +281,57 @@ The `Conduct` and `Compose` tools are used to orchestrate and compose agents. Co
 By combining agents, tasks, tools, and language models, you can create a wide range of workflows, from simple pipelines to complex multi-agent teams.
 
 ## MCP Integration
-- **MCPOrchestra**: Adapter for integrating with Model Context Protocol (MCP) servers, allowing agents to use tools implemented in any programming language
+- **MCPOrchestra**: Adapter for integrating with Model Context Protocol (MCP) servers, allowing agents to use any MCP-compatible toolkits / servers
   - Connect to FastMCP, Playwright, Slack, Filesystem, and other MCP-compatible servers
-  - Seamlessly convert external tools into Orchestra-compatible callables
-  - Create multi-language agent systems with tools written in JavaScript, Python, and more
+  - List available tools from an MCP server
+  - Convert external tools into Orchestra-compatible callables for agents to use
 
-For detailed documentation on MCP integration, visit our [MCP Integration Guide](https://docs.orchestra.org/orchestra/mcp-integration).
+For documentation on MCP integration, visit our [MCP Integration Guide](https://docs.orchestra.org/orchestra/mcp-integration).
+
+
+## Streaming Support
+
+Orchestra supports streaming of LLM responses. When using streaming, you need to use an async approach:
+
+```python
+import asyncio
+from mainframe_orchestra import Agent, Task, OpenaiModels, WebTools, set_verbosity
+
+set_verbosity(1)
+
+research_agent = Agent(
+    agent_id="research_assistant_1",
+    role="research assistant",
+    goal="answer user queries",
+    llm=OpenaiModels.gpt_4o,
+    tools={WebTools.exa_search}
+)
+
+async def research_task_streaming():
+    # Create the task and await it
+    task = await Task.create(
+        agent=research_agent,
+        instruction="Use your exa search tool to research quantum computing and explain it in a way that is easy to understand.",
+        stream=True
+    )
+
+    # Process the streaming output
+    async for chunk in task:
+        print(chunk, end="", flush=True)
+    print()  # Add a newline at the end
+
+# Run the async function
+if __name__ == "__main__":
+    asyncio.run(research_task_streaming())
+```
+
+The key points for streaming:
+1. Make your function async
+2. Set `stream=True` in the Task.create call
+3. Await the Task.create() call to get the streaming task
+4. Use `async for` to process the streaming chunks
+5. Run the async function with asyncio.run()
+
 
 ## Documentation
 
