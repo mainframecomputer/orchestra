@@ -36,6 +36,14 @@
           "type": "page"
         },
         {
+          "path": "docs/src/observability.md",
+          "type": "page"
+        },
+        {
+          "path": "docs/src/mcp-integration.md",
+          "type": "page"
+        },
+        {
           "name": "Tools",
           "type": "folder",
           "children": [

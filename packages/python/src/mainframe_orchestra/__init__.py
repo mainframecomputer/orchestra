@@ -3,7 +3,7 @@ Mainframe Orchestra: a Python framework for building and orchestrating multi-age
 """
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-__version__ = "0.0.25"
+__version__ = "0.0.26"
 
 import importlib
 
@@ -42,6 +42,7 @@ from .tools import (
     WhisperTools,
     WikipediaTools,
 )
+from .adapters import MCPOrchestra
 
 if TYPE_CHECKING:
     from .tools.audio_tools import TextToSpeechTools, WhisperTools
@@ -96,6 +97,7 @@ __all__ = [
     "Conduct",
     "Compose",
     "TaskInstruction",
+
     # Configuration and Utilities
     "Config",
     "config",
@@ -111,6 +113,7 @@ __all__ = [
     "GeminiModels",
     "DeepseekModels",
     "HuggingFaceModels",
+  
     # List core tools
     "FileTools",
     "EmbeddingsTools",
@@ -125,6 +128,7 @@ __all__ = [
     "SemanticSplitter",
     "SentenceSplitter",
     "WhisperTools",
+
     # Optional tools
     "LangchainTools",
     "MatplotlibTools",
@@ -132,4 +136,7 @@ __all__ = [
     "TextToSpeechTools",
     "FredTools",
     "StripeTools",
+
+    # Adapters
+    "MCPOrchestra",
 ]
