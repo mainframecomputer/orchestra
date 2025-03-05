@@ -286,7 +286,7 @@ By combining agents, tasks, tools, and language models, you can create a wide ra
   - List available tools from an MCP server
   - Convert external tools into Orchestra-compatible callables for agents to use
 
-For documentation on MCP integration, visit our [MCP Integration Guide](https://docs.orchestra.org/orchestra/mcp-integration).
+For documentation on MCP integration, visit our [MCP Integration Guide](https://docs.orchestra.org/orchestra/mcp-integration-with-orchestra).
 
 
 ## Streaming Support
