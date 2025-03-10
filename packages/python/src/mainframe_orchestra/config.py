@@ -1,9 +1,9 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-from zoneinfo import ZoneInfo
-from abc import ABC, abstractmethod
 import os
+from abc import ABC, abstractmethod
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 
 class Config(ABC):
@@ -20,6 +20,7 @@ class Config(ABC):
     TOGETHERAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     DEEPSEEK_API_KEY: Optional[str] = None
+    HF_TOKEN: Optional[str] = None
 
     @classmethod
     def validate_api_key(cls, key_name: str) -> str:
@@ -40,7 +41,6 @@ class Config(ABC):
 class EnvConfig(Config):
     """Environment-based configuration that pulls from env vars."""
 
-
     def __init__(self):
         # Initialize LLM Provider API Keys from environment variables
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -51,6 +51,7 @@ class EnvConfig(Config):
         self.TOGETHERAI_API_KEY = os.getenv("TOGETHERAI_API_KEY")
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         self.DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+        self.HF_TOKEN = os.getenv("HF_TOKEN")
 
     @classmethod
     def validate_required_env_vars(cls) -> None:

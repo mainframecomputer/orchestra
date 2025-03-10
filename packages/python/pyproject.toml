@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mainframe-orchestra"
-version = "0.0.23"
+version = "0.0.26"
 description = "Mainframe-Orchestra is a lightweight, open-source agentic framework for building LLM based pipelines and self-orchestrating multi-agent teams"
 authors = [
     "Mainframe Computer Inc. <hi@mainfra.me>",
@@ -32,6 +32,7 @@ tqdm = "*"
 python-dotenv = "*"
 PyYAML = "*"
 ollama = "*"
+huggingface-hub = "*"
 lxml = "*"
 halo = "*"
 groq = "*"
@@ -45,6 +46,8 @@ fake-useragent = "*"
 google-generativeai = "*"
 tzdata = "^2024.2"
 braintrust = "*"
+mcp = "*"
+fastmcp = "*"
 
 [tool.poetry.extras]
 langchain_tools = [

@@ -111,8 +111,8 @@ def parse_json_response(response: str) -> dict:
                 cleaned_json = re.sub(comment_pattern, "", cleaved_json, flags=re.DOTALL)
                 return json.loads(cleaned_json)
             except json.JSONDecodeError as e:
-                logger.error(f"All JSON parsing attempts failed: {e}")
-                raise ValueError(f"Invalid JSON structure: {e}")
+                logger.error(f"All JSON parsing attempts failed: {e}.\nFailed response: {response}")
+                raise ValueError(f"Invalid JSON structure: {e}\nFailed response: {response}")
 
 
 def serialize_result(obj: Any) -> Union[str, Dict[str, Any], List[Any]]:
@@ -481,14 +481,14 @@ class Task(BaseModel):
         response_type: str = "final_response"
     ) -> Union[str, AsyncIterator[str]]:
         """Execute a direct LLM call without tool usage, with fallback support.
-        
+
         Args:
             callback: Optional callback function for progress updates
             response_type: Type of response event to emit ("final_response" or "initial_response")
-            
+
         Returns:
             Union[str, AsyncIterator[str]]: Task result or stream
-            
+
         Raises:
             Exception: If LLM call fails after all fallback attempts
         """
@@ -501,7 +501,7 @@ class Task(BaseModel):
             "require_json_output": self.require_json_output,
             "stream": self.stream,
         }
-        
+
         # Convert single LLM to list for unified handling
         llms = [self.llm] if callable(self.llm) else list(self.llm)
         last_error = None
@@ -538,7 +538,7 @@ class Task(BaseModel):
                     response, error = llm_result
                     if error:
                         raise error
-                    
+
                     # Check if response itself is a reasoning tuple
                     if isinstance(response, tuple) and len(response) == 2:
                         reasoning, answer = response
@@ -550,7 +550,7 @@ class Task(BaseModel):
                                 "timestamp": datetime.now().isoformat(),
                             })
                         response = answer  # Use only the answer portion
-                        
+
                 elif isinstance(llm_result, dict):
                     response = json.dumps(llm_result)
                 elif isinstance(llm_result, str):
@@ -592,7 +592,7 @@ class Task(BaseModel):
         logger.debug("Starting tool loop execution")
 
         try:
-            MAX_ITERATIONS = 10
+            MAX_ITERATIONS = 20
             MAX_IDENTICAL_CALLS = 3
             MAX_CONDUCT_CALLS = 3
 
@@ -720,7 +720,7 @@ The original task instruction:
                         reasoning, response = response
                         logger.debug("Received reasoning from LLM")
                         logger.debug(f"Reasoning content: {reasoning}")
-                        
+
                         if callback:
                             await callback({
                                 "type": "reasoning",
@@ -728,7 +728,7 @@ The original task instruction:
                                 "agent_id": self.agent_id,
                                 "timestamp": datetime.now().isoformat(),
                             })
-                        
+
                         # Log the answer portion
                         logger.debug(f"Answer content: {response}")
 
@@ -916,9 +916,6 @@ The original task instruction:
                                 logger.info(f"Executing tool: [{tool_name}] with parameters: {json.dumps(serializable_params, separators=(',', ':'))}")
 
                                 if asyncio.iscoroutinefunction(tool_func):
-                                    logger.info(
-                                        f"Executing async tool: {tool_name}"
-                                    )
                                     # Combine the parameters only for execution
                                     execution_params = {**serializable_params, **special_params}
                                     raw_result = await tool_func(**execution_params)
@@ -997,10 +994,10 @@ The original task instruction:
 
                     # Check if this iteration only contains conduct_tool calls
                     all_conduct_tools = all(
-                        tool_call.get("tool") == "conduct_tool" 
+                        tool_call.get("tool") == "conduct_tool"
                         for tool_call in response_data["tool_calls"]
                     )
-                    
+
                     if all_conduct_tools:
                         conduct_tool_count += 1
                         if conduct_tool_count >= MAX_CONDUCT_CALLS:
@@ -1146,11 +1143,11 @@ The original task instruction:
                             callback(chunk, end=end, flush=flush)
                         else:
                             callback(chunk)
-            
+
             # Add newline after stream is complete
             if callback == print:
                 callback("\n", end="", flush=True)
-                
+
             return "".join(collected)
 
         return loop.run_until_complete(process())

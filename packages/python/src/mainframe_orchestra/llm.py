@@ -1,35 +1,61 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-import os
-import time
-import random
-import re
 import json
 import logging
-from typing import List, Dict, Union, Tuple, Optional, Iterator, AsyncGenerator
-from halo import Halo
+import os
+import random
+import re
+import time
+from typing import AsyncGenerator, Dict, Iterator, List, Optional, Tuple, Union
+
+import google.generativeai as genai
+import ollama
+from anthropic import (
+    APIConnectionError as AnthropicConnectionError,
+)
+from anthropic import (
+    APIResponseValidationError as AnthropicResponseValidationError,
+)
+from anthropic import (
+    APIStatusError as AnthropicStatusError,
+)
+from anthropic import (
+    APITimeoutError as AnthropicTimeoutError,
+)
 from anthropic import (
     AsyncAnthropic,
-    APIStatusError as AnthropicStatusError,
-    APITimeoutError as AnthropicTimeoutError,
-    APIConnectionError as AnthropicConnectionError,
-    APIResponseValidationError as AnthropicResponseValidationError,
+)
+from anthropic import (
     RateLimitError as AnthropicRateLimitError,
 )
-from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+from groq import Groq
+from halo import Halo
+from huggingface_hub import InferenceClient
+from huggingface_hub.utils import HfHubHTTPError
 from openai import (
-    OpenAI,
-    AsyncOpenAI,
-    APIError as OpenAIAPIError,
     APIConnectionError as OpenAIConnectionError,
+)
+from openai import (
+    APIError as OpenAIAPIError,
+)
+from openai import (
     APITimeoutError as OpenAITimeoutError,
-    RateLimitError as OpenAIRateLimitError,
+)
+from openai import (
+    AsyncOpenAI,
+    OpenAI,
+)
+from openai import (
     AuthenticationError as OpenAIAuthenticationError,
+)
+from openai import (
     BadRequestError as OpenAIBadRequestError,
 )
-from groq import Groq
-import ollama
-import google.generativeai as genai
+from openai import (
+    RateLimitError as OpenAIRateLimitError,
+)
+from openai.types.chat import ChatCompletion as OpenAIChatCompletion
+
 from .utils.braintrust_utils import wrap_openai
 
 # Import config, fall back to environment variables if not found
@@ -48,6 +74,7 @@ except ImportError:
             self.TOGETHERAI_API_KEY = os.getenv("TOGETHERAI_API_KEY")
             self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
             self.DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+            self.HF_TOKEN = os.getenv("HF_TOKEN")
 
     config = EnvConfig()
 
@@ -78,19 +105,21 @@ logging.getLogger("groq._base_client").setLevel(logging.WARNING)
 if not logger.handlers:
     # Console handler - keep it clean for user output
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(console_handler)
 
     # Setup file logging if ORCHESTRA_LOG_FILE is set
     log_file = os.getenv("ORCHESTRA_LOG_FILE")
     if log_file:
         file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        ))
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        )
         file_handler.setLevel(logging.DEBUG)  # File logs capture everything
         logger.addHandler(file_handler)
+
 
 def set_verbosity(value: Union[str, bool, int]):
     global verbosity, debug
@@ -125,6 +154,7 @@ def set_verbosity(value: Union[str, bool, int]):
             verbosity = False
             debug = False
             logger.setLevel(logging.WARNING)
+
 
 def parse_json_response(response: str) -> dict:
     """
@@ -258,7 +288,9 @@ class OpenaiModels:
 
         # Add check for non-streaming models (currently only o1 models) at the start
         if stream and model in ["o1-mini", "o1-preview"]:
-            logger.error(f"Streaming is not supported for {model}. Falling back to non-streaming request.")
+            logger.error(
+                f"Streaming is not supported for {model}. Falling back to non-streaming request."
+            )
             stream = False
 
         spinner = Halo(text="Sending request to OpenAI...", spinner="dots")
@@ -300,7 +332,9 @@ class OpenaiModels:
                     request_params["response_format"] = {"type": "json_object"}
 
             # Log all request details including parameters
-            logger.debug(f"[LLM] OpenAI ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
+            logger.debug(
+                f"[LLM] OpenAI ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+            )
 
             if stream:
                 spinner.stop()  # Stop spinner before streaming
@@ -318,7 +352,9 @@ class OpenaiModels:
                                 yield content
                         logger.debug(f"Stream complete: {full_message}")
                     except OpenAIAuthenticationError as e:
-                        logger.error(f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}")
+                        logger.error(
+                            f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}"
+                        )
                         yield ""
                     except OpenAIBadRequestError as e:
                         logger.error(f"Invalid request parameters: {str(e)}")
@@ -347,16 +383,20 @@ class OpenaiModels:
 
             try:
                 # Attempt to parse the API response as JSON and reformat it as compact, single-line JSON.
-                compact_response = json.dumps(json.loads(content.strip()), separators=(',', ':'))
+                compact_response = json.dumps(json.loads(content.strip()), separators=(",", ":"))
             except ValueError:
-                # If it's not JSON, collapse any extra whitespace (including newlines) into a single space.
-                compact_response = " ".join(content.strip().split())
+                # If it's not JSON, preserve newlines but clean up extra whitespace within lines
+                lines = content.strip().splitlines()
+                compact_response = "\n".join(line.strip() for line in lines)
+
             logger.debug(f"API Response: {compact_response}")
             return compact_response, None
 
         except OpenAIAuthenticationError as e:
             spinner.fail("Authentication failed")
-            logger.error(f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}")
+            logger.error(
+                f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}"
+            )
             return "", e
         except OpenAIBadRequestError as e:
             spinner.fail("Invalid request")
@@ -414,6 +454,7 @@ class OpenaiModels:
     gpt_4o_mini = custom_model("gpt-4o-mini")
     o1_mini = custom_model("o1-mini")
     o1_preview = custom_model("o1-preview")
+    gpt_4_5_preview = custom_model("gpt-4.5-preview")
 
 
 class AnthropicModels:
@@ -500,7 +541,9 @@ class AnthropicModels:
                         }
                     )
             # Log request details
-            logger.debug(f"[LLM] Anthropic ({model}) Request: {json.dumps({'system_message': system_message, 'messages': anthropic_messages, 'temperature': temperature, 'max_tokens': max_tokens, 'stop_sequences': stop_sequences}, separators=(',', ':'))}")
+            logger.debug(
+                f"[LLM] Anthropic ({model}) Request: {json.dumps({'system_message': system_message, 'messages': anthropic_messages, 'temperature': temperature, 'max_tokens': max_tokens, 'stop_sequences': stop_sequences}, separators=(',', ':'))}"
+            )
 
             # Handle streaming
             if stream:
@@ -528,7 +571,9 @@ class AnthropicModels:
                             elif chunk.type == "message_delta":
                                 # When a stop_reason is provided, log it without per-chunk verbosity
                                 if chunk.delta.stop_reason:
-                                    logger.debug(f"Message delta stop reason: {chunk.delta.stop_reason}")
+                                    logger.debug(
+                                        f"Message delta stop reason: {chunk.delta.stop_reason}"
+                                    )
                             elif chunk.type == "error":
                                 logger.error(f"Stream error: {chunk.error}")
                                 break
@@ -538,20 +583,29 @@ class AnthropicModels:
                         logger.error(f"Connection error during streaming: {str(e)}", exc_info=True)
                         yield ""
                     except AnthropicRateLimitError as e:
-                        logger.error(f"Rate limit exceeded during streaming: {str(e)}", exc_info=True)
+                        logger.error(
+                            f"Rate limit exceeded during streaming: {str(e)}", exc_info=True
+                        )
                         yield ""
                     except AnthropicStatusError as e:
                         logger.error(f"API status error during streaming: {str(e)}", exc_info=True)
                         yield ""
                     except AnthropicResponseValidationError as e:
-                        logger.error(f"Invalid response format during streaming: {str(e)}", exc_info=True)
+                        logger.error(
+                            f"Invalid response format during streaming: {str(e)}", exc_info=True
+                        )
                         yield ""
                     except ValueError as e:
-                        logger.error(f"Configuration error during streaming: {str(e)}", exc_info=True)
+                        logger.error(
+                            f"Configuration error during streaming: {str(e)}", exc_info=True
+                        )
                         yield ""
                     except Exception as e:
-                        logger.error(f"An unexpected error occurred during streaming: {e}", exc_info=True)
+                        logger.error(
+                            f"An unexpected error occurred during streaming: {e}", exc_info=True
+                        )
                         yield ""
+
                 return stream_generator()
 
             # Non-streaming logic
@@ -631,6 +685,7 @@ class AnthropicModels:
     haiku = custom_model("claude-3-haiku-20240307")
     sonnet_3_5 = custom_model("claude-3-5-sonnet-latest")
     haiku_3_5 = custom_model("claude-3-5-haiku-latest")
+    sonnet_3_7 = custom_model("claude-3-7-sonnet-latest")
 
 
 class OpenrouterModels:
@@ -655,14 +710,16 @@ class OpenrouterModels:
         spinner.start()
 
         try:
-            client = AsyncOpenAI(
+            client = wrap_openai(AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1", api_key=config.OPENROUTER_API_KEY
-            )
+            ))
             if not client.api_key:
                 raise ValueError("OpenRouter API key not found in environment variables.")
 
             # Log request details including parameters
-            logger.debug(f"[LLM] OpenRouter ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
+            logger.debug(
+                f"[LLM] OpenRouter ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+            )
 
             if stream:
                 spinner.stop()  # Stop spinner before streaming
@@ -677,7 +734,9 @@ class OpenrouterModels:
                             temperature=temperature,
                             max_tokens=max_tokens,
                             stream=True,
-                            response_format={"type": "json_object"} if require_json_output else None,
+                            response_format={"type": "json_object"}
+                            if require_json_output
+                            else None,
                         )
                         async for chunk in response:
                             if chunk.choices[0].delta.content:
@@ -710,12 +769,12 @@ class OpenrouterModels:
             if require_json_output:
                 try:
                     json_response = parse_json_response(content)
-                    compressed_content = json.dumps(json_response, separators=(',', ':'))
+                    compressed_content = json.dumps(json_response, separators=(",", ":"))
                     logger.debug(f"[LLM] API Response: {compressed_content}")
                     return compressed_content, None
                 except ValueError as e:
                     return "", e
-            
+
             # For non-JSON responses, keep original formatting but make single line
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
@@ -755,12 +814,14 @@ class OpenrouterModels:
     haiku_3_5 = custom_model("anthropic/claude-3.5-haiku")
     sonnet = custom_model("anthropic/claude-3-sonnet")
     sonnet_3_5 = custom_model("anthropic/claude-3.5-sonnet")
+    sonnet_3_7 = custom_model("anthropic/claude-3.7-sonnet")
     opus = custom_model("anthropic/claude-3-opus")
     gpt_3_5_turbo = custom_model("openai/gpt-3.5-turbo")
     gpt_4_turbo = custom_model("openai/gpt-4-turbo")
     gpt_4 = custom_model("openai/gpt-4")
     gpt_4o = custom_model("openai/gpt-4o")
     gpt_4o_mini = custom_model("openai/gpt-4o-mini")
+    gpt_4_5_preview = custom_model("openai/gpt-4.5-preview")
     o1_preview = custom_model("openai/o1-preview")
     o1_mini = custom_model("openai/o1-mini")
     gemini_flash_1_5 = custom_model("google/gemini-flash-1.5")
@@ -849,7 +910,9 @@ class OllamaModels:
                 try:
                     client = ollama.Client()
 
-                    logger.debug(f"[LLM] Ollama ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
+                    logger.debug(
+                        f"[LLM] Ollama ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+                    )
 
                     if stream:
                         spinner.stop()  # Stop spinner before streaming
@@ -865,9 +928,13 @@ class OllamaModels:
                                     options={"temperature": temperature, "num_predict": max_tokens},
                                     stream=True,
                                 )
-                                
+
                                 for chunk in response:
-                                    if chunk and "message" in chunk and "content" in chunk["message"]:
+                                    if (
+                                        chunk
+                                        and "message" in chunk
+                                        and "content" in chunk["message"]
+                                    ):
                                         content = chunk["message"]["content"]
                                         full_message += content
                                         yield content
@@ -900,7 +967,9 @@ class OllamaModels:
                         return json.dumps(json_response), None
 
                     # For non-JSON responses, keep original formatting but make single line
-                    logger.debug(f"[LLM] API Response: {' '.join(response_text.strip().splitlines())}")
+                    logger.debug(
+                        f"[LLM] API Response: {' '.join(response_text.strip().splitlines())}"
+                    )
                     return response_text.strip(), None
 
                 except ollama.ResponseError as e:
@@ -947,7 +1016,9 @@ class OllamaModels:
             max_tokens: int = 4000,
             require_json_output: bool = False,
             stream: bool = False,  # Add stream parameter
-        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:  # Update return type
+        ) -> Union[
+            Tuple[str, Optional[Exception]], AsyncGenerator[str, None]
+        ]:  # Update return type
             return await OllamaModels.call_ollama(
                 model=model_name,
                 messages=messages,
@@ -980,12 +1051,17 @@ class GroqModels:
 
         try:
             api_key = config.validate_api_key("GROQ_API_KEY")
-            client = Groq(api_key=api_key)
+            client = wrap_openai(OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=api_key
+            ))
             if not client.api_key:
                 raise ValueError("Groq API key not found in environment variables.")
 
             # Log request messages at DEBUG level
-            logger.debug(f"[LLM] Groq ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
+            logger.debug(
+                f"[LLM] Groq ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+            )
 
             if stream:
                 spinner.stop()  # Stop spinner before streaming
@@ -999,7 +1075,9 @@ class GroqModels:
                             messages=messages,
                             temperature=temperature,
                             max_tokens=max_tokens,
-                            response_format={"type": "json_object"} if require_json_output else None,
+                            response_format={"type": "json_object"}
+                            if require_json_output
+                            else None,
                             stream=True,
                         )
                         for chunk in response:
@@ -1032,12 +1110,12 @@ class GroqModels:
             if require_json_output:
                 try:
                     json_response = parse_json_response(content)
-                    compressed_content = json.dumps(json_response, separators=(',', ':'))
+                    compressed_content = json.dumps(json_response, separators=(",", ":"))
                     logger.debug(f"[LLM] API Response: {compressed_content}")
                     return compressed_content, None
                 except ValueError as e:
                     return "", e
-            
+
             # For non-JSON responses, keep original formatting but make single line
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
@@ -1100,35 +1178,36 @@ class TogetheraiModels:
 
         try:
             api_key = config.validate_api_key("TOGETHERAI_API_KEY")
-            client = OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
+            client = wrap_openai(OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1"))
 
             # Process images if present
             if image_data:
-                last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
+                last_user_msg = next(
+                    (msg for msg in reversed(messages) if msg["role"] == "user"), None
+                )
                 if last_user_msg:
                     content = []
                     if isinstance(image_data, str):
                         image_data = [image_data]
-                    
+
                     for i, image in enumerate(image_data, start=1):
                         content.append({"type": "text", "text": f"Image {i}:"})
                         if image.startswith(("http://", "https://")):
-                            content.append({
-                                "type": "image_url",
-                                "image_url": {"url": image}
-                            })
+                            content.append({"type": "image_url", "image_url": {"url": image}})
                         else:
                             content.append({
                                 "type": "image_url",
                                 "image_url": {"url": f"data:image/jpeg;base64,{image}"}
                             })
-                    
+
                     # Add original text content
                     content.append({"type": "text", "text": last_user_msg["content"]})
                     last_user_msg["content"] = content
 
             # Log request details after any message modifications
-            logger.debug(f"[LLM] TogetherAI ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
+            logger.debug(
+                f"[LLM] TogetherAI ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+            )
 
             if stream:
                 spinner.stop()
@@ -1142,10 +1221,12 @@ class TogetheraiModels:
                             messages=messages,
                             temperature=temperature,
                             max_tokens=max_tokens,
-                            response_format={"type": "json_object"} if require_json_output else None,
-                            stream=True
+                            response_format={"type": "json_object"}
+                            if require_json_output
+                            else None,
+                            stream=True,
                         )
-                        
+
                         for chunk in response:
                             if chunk.choices[0].delta.content:
                                 content = chunk.choices[0].delta.content
@@ -1153,11 +1234,11 @@ class TogetheraiModels:
                                 yield content
                         logger.debug("Stream complete")
                         logger.debug(f"Full message: {full_message}")
-                        yield "\n" 
+                        yield "\n"
                     except Exception as e:
                         logger.error(f"An error occurred during streaming: {e}")
                         yield ""
-                        yield "\n" 
+                        yield "\n"
 
                 return stream_generator()
 
@@ -1173,17 +1254,17 @@ class TogetheraiModels:
 
             content = response.choices[0].message.content
             spinner.succeed("Request completed")
-            
+
             # Compress the response to single line if it's JSON
             if require_json_output:
                 try:
                     json_response = parse_json_response(content)
-                    compressed_content = json.dumps(json_response, separators=(',', ':'))
+                    compressed_content = json.dumps(json_response, separators=(",", ":"))
                     logger.debug(f"[LLM] API Response: {compressed_content}")
                     return compressed_content, None
                 except ValueError as e:
                     return "", e
-            
+
             # For non-JSON responses, keep original formatting but make single line
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
             return content.strip(), None
@@ -1241,7 +1322,7 @@ class GeminiModels:
         """
         # Create spinner only once at the start
         spinner = Halo(text=f"Sending request to Gemini ({model})...", spinner="dots")
-        
+
         try:
             # Start spinner
             spinner.start()
@@ -1254,25 +1335,26 @@ class GeminiModels:
                 "temperature": temperature,
                 "max_output_tokens": max_tokens,
             }
-            
+
             if require_json_output:
-                generation_config.update({
-                    "response_mime_type": "application/json"
-                })
+                generation_config.update({"response_mime_type": "application/json"})
 
             model_instance = genai.GenerativeModel(
-                model_name=model,
-                generation_config=genai.GenerationConfig(**generation_config)
+                model_name=model, generation_config=genai.GenerationConfig(**generation_config)
             )
             # Print all messages together after spinner starts
-            logger.debug(f"[LLM] Gemini ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
+            logger.debug(
+                f"[LLM] Gemini ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+            )
 
             if stream:
                 spinner.stop()
-                last_user_message = next((msg["content"] for msg in reversed(messages) if msg["role"] == "user"), "")
+                last_user_message = next(
+                    (msg["content"] for msg in reversed(messages) if msg["role"] == "user"), ""
+                )
                 full_message = ""
                 logger.debug("Stream started")
-                
+
                 try:
                     response = model_instance.generate_content(last_user_message, stream=True)
                     for chunk in response:
@@ -1280,7 +1362,7 @@ class GeminiModels:
                             content = chunk.text
                             full_message += content
                             yield content
-                    
+
                     logger.debug("Stream complete")
                     logger.debug(f"Full message: {full_message}")
                 except Exception as e:
@@ -1289,13 +1371,13 @@ class GeminiModels:
             else:
                 # Non-streaming: Use chat format
                 chat = model_instance.start_chat(history=[])
-                
+
                 # Process messages and images
                 if messages:
                     for msg in messages:
                         role = msg["role"]
                         content = msg["content"]
-                        
+
                         if role == "user":
                             if image_data and msg == messages[-1]:
                                 parts = []
@@ -1368,6 +1450,7 @@ class GeminiModels:
                 ):
                     result += chunk
                 return result, None
+
         return wrapper
 
     # Model-specific methods using custom_model
@@ -1383,7 +1466,9 @@ class DeepseekModels:
     """
 
     @staticmethod
-    def _preprocess_reasoner_messages(messages: List[Dict[str, str]], require_json_output: bool = False) -> List[Dict[str, str]]:
+    def _preprocess_reasoner_messages(
+        messages: List[Dict[str, str]], require_json_output: bool = False
+    ) -> List[Dict[str, str]]:
         """
         Preprocess messages specifically for the DeepSeek Reasoner model:
         - Combine successive user messages
@@ -1398,7 +1483,9 @@ class DeepseekModels:
             List[Dict[str, str]]: Processed messages array
         """
         if require_json_output:
-            logger.warning("Warning: JSON output format is not supported for the Reasoner model. Request will proceed without JSON formatting.")
+            logger.warning(
+                "Warning: JSON output format is not supported for the Reasoner model. Request will proceed without JSON formatting."
+            )
 
         if not messages:
             return messages
@@ -1414,19 +1501,13 @@ class DeepseekModels:
             else:
                 # Different role, flush previous message if exists
                 if current_role:
-                    processed.append({
-                        "role": current_role,
-                        "content": "\n".join(current_content)
-                    })
+                    processed.append({"role": current_role, "content": "\n".join(current_content)})
                 # Start new message
                 current_role = msg["role"]
                 current_content = [msg["content"]]
 
         if current_role:
-            processed.append({
-                "role": current_role,
-                "content": "\n".join(current_content)
-            })
+            processed.append({"role": current_role, "content": "\n".join(current_content)})
 
         return processed
 
@@ -1454,22 +1535,28 @@ class DeepseekModels:
                 raise ValueError("DeepSeek API key not found in environment variables.")
 
             # Create an AsyncOpenAI client
-            client = AsyncOpenAI(
+            client = wrap_openai(AsyncOpenAI(
                 api_key=api_key,
                 base_url="https://api.deepseek.com/v1",
-            )
+            ))
 
             # Warn if image data was provided
             if image_data:
-                logger.warning("Warning: DeepSeek API does not support image inputs. Images will be ignored.")
+                logger.warning(
+                    "Warning: DeepSeek API does not support image inputs. Images will be ignored."
+                )
 
             # Preprocess messages only for the reasoner model
             if messages and model == "deepseek-reasoner":
-                messages = DeepseekModels._preprocess_reasoner_messages(messages, require_json_output)
+                messages = DeepseekModels._preprocess_reasoner_messages(
+                    messages, require_json_output
+                )
                 # Remove JSON requirement for reasoner model
                 require_json_output = False
             # Log request details
-            logger.debug(f"[LLM] DeepSeek ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}")
+            logger.debug(
+                f"[LLM] DeepSeek ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+            )
 
             request_params = {
                 "model": model,
@@ -1494,7 +1581,9 @@ class DeepseekModels:
                         in_reasoning = False
                         logger.debug("Stream started")
                         try:
-                            response = await client.chat.completions.create(stream=True, **request_params)
+                            response = await client.chat.completions.create(
+                                stream=True, **request_params
+                            )
                             async for chunk in response:
                                 if chunk.choices[0].delta.reasoning_content:
                                     if not in_reasoning:
@@ -1508,7 +1597,9 @@ class DeepseekModels:
                                     content = chunk.choices[0].delta.content
                                     full_answer += content
                                     yield content
-                            logger.debug(f"Stream complete: reasoning: {full_reasoning}, answer: {full_answer}")
+                            logger.debug(
+                                f"Stream complete: reasoning: {full_reasoning}, answer: {full_answer}"
+                            )
                         except Exception as e:
                             logger.error(f"An error occurred during streaming: {e}")
                             yield ""
@@ -1516,7 +1607,9 @@ class DeepseekModels:
                         full_message = ""
                         logger.debug("Stream started")
                         try:
-                            response = await client.chat.completions.create(stream=True, **request_params)
+                            response = await client.chat.completions.create(
+                                stream=True, **request_params
+                            )
                             async for chunk in response:
                                 if chunk.choices[0].delta.content:
                                     content = chunk.choices[0].delta.content
@@ -1533,7 +1626,7 @@ class DeepseekModels:
             # Non-streaming logic
             spinner.text = f"Waiting for {model} response..."
             response = await client.chat.completions.create(**request_params)
-            
+
             if model == "deepseek-reasoner":
                 reasoning = response.choices[0].message.reasoning_content
                 content = response.choices[0].message.content
@@ -1544,7 +1637,10 @@ class DeepseekModels:
                 logger.debug(f"[LLM] API Response (Reasoning): {compressed_reasoning}")
                 logger.debug(f"[LLM] API Response (Answer): {compressed_answer}")
 
-                return (compressed_reasoning, compressed_answer), None  # Return tuple of (reasoning, answer)
+                return (
+                    compressed_reasoning,
+                    compressed_answer,
+                ), None  # Return tuple of (reasoning, answer)
             else:
                 content = response.choices[0].message.content
                 spinner.succeed("Request completed")
@@ -1589,7 +1685,161 @@ class DeepseekModels:
             )
 
         return wrapper
-    
+
     # Model-specific methods using custom_model
     chat = custom_model("deepseek-chat")
     reasoner = custom_model("deepseek-reasoner")
+
+
+class HuggingFaceModels:
+    """
+    Class containing methods for interacting with HuggingFace models via InferenceClient.
+    """
+
+    @staticmethod
+    async def send_huggingface_request(
+        model: str = "",
+        image_data: Union[List[str], str, None] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        require_json_output: bool = False,
+        messages: Optional[List[Dict[str, str]]] = None,
+        stream: bool = False,
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+        """
+        Sends a request to HuggingFace Inference API asynchronously and handles retries.
+        """
+        spinner = Halo(text="Sending request to HuggingFace...", spinner="dots")
+        spinner.start()
+
+        try:
+            # Initialize the client with API token from environment
+            client = InferenceClient(model=model, token=config.HF_TOKEN)
+
+            # Convert messages to prompt format
+            prompt = ""
+            if messages:
+                for msg in messages:
+                    role = msg["role"]
+                    content = msg["content"]
+
+                    if role == "system":
+                        prompt += f"<|system|>{content}\n"
+                    elif role == "user":
+                        prompt += f"<|user|>{content}\n"
+                    elif role == "assistant":
+                        prompt += f"<|assistant|>{content}\n"
+
+            # Handle image inputs if present
+            if image_data:
+                if isinstance(image_data, str):
+                    image_data = [image_data]
+                for img in image_data:
+                    if prompt:
+                        prompt += "\n"
+                    prompt += f"<image>{img}</image>"
+
+            logger.debug(
+                f"[LLM] HuggingFace ({model}) Request: {json.dumps({'prompt': prompt, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+            )
+
+            if stream:
+                spinner.stop()
+
+                async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started")
+                    try:
+                        response = client.text_generation(
+                            prompt,
+                            max_new_tokens=max_tokens,
+                            temperature=temperature,
+                            stream=True,
+                        )
+
+                        for chunk in response:
+                            if chunk.token.text:
+                                content = chunk.token.text
+                                full_message += content
+                                yield content
+
+                        logger.debug("Stream complete")
+                        logger.debug(f"Full message: {full_message}")
+                    except Exception as e:
+                        logger.error(f"An error occurred during streaming: {e}", exc_info=True)
+                        yield ""
+
+                return stream_generator()
+
+            spinner.text = f"Waiting for {model} response..."
+
+            parameters = {
+                "max_new_tokens": max_tokens,
+                "temperature": temperature,
+                "return_full_text": False,
+            }
+
+            if require_json_output:
+                parameters["do_sample"] = False  # More deterministic for JSON outputs
+
+            response = client.text_generation(prompt, **parameters)
+
+            content = response
+            spinner.succeed("Request completed")
+
+            # Handle JSON output if required
+            if require_json_output:
+                try:
+                    json_response = parse_json_response(content)
+                    compressed_content = json.dumps(json_response, separators=(",", ":"))
+                    logger.debug(f"[LLM] API Response: {compressed_content}")
+                    return compressed_content, None
+                except ValueError as e:
+                    return "", e
+
+            # For non-JSON responses, keep original formatting but make single line
+            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
+            return content.strip(), None
+
+        except HfHubHTTPError as e:
+            spinner.fail("HuggingFace Token Error")
+            if e.response.status_code == 401:
+                logger.error("Authentication failed: Please check your HuggingFace token")
+            elif e.response.status_code == 429:
+                logger.error("Rate limit exceeded")
+            else:
+                logger.error(f"HuggingFace API error: {str(e)}")
+            return "", e
+        except Exception as e:
+            spinner.fail("Request failed")
+            logger.error(f"Unexpected error: {str(e)}")
+            return "", e
+        finally:
+            if spinner.spinner_id:
+                spinner.stop()
+
+    @staticmethod
+    def custom_model(model_name: str):
+        async def wrapper(
+            image_data: Union[List[str], str, None] = None,
+            temperature: float = 0.7,
+            max_tokens: int = 4000,
+            require_json_output: bool = False,
+            messages: Optional[List[Dict[str, str]]] = None,
+            stream: bool = False,
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+            return await HuggingFaceModels.send_huggingface_request(
+                model=model_name,
+                image_data=image_data,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                require_json_output=require_json_output,
+                messages=messages,
+                stream=stream,
+            )
+
+        return wrapper
+
+    # Add commonly used models
+    qwen2_5_coder = custom_model("Qwen/Qwen2.5-Coder-32B-Instruct")
+    meta_llama_3_8b = custom_model("meta-llama/Meta-Llama-3-8B-Instruct")

@@ -1,6 +1,6 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/mainframecomputer/orchestra/issues)
 [![PyPI version](https://badge.fury.io/py/mainframe-orchestra.svg)](https://pypi.org/project/mainframe-orchestra/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Twitter](https://img.shields.io/twitter/follow/orchestraorg?label=Follow%20@orchestraorg&style=social)](https://twitter.com/orchestraorg)
 
 # Orchestra
@@ -27,6 +27,9 @@ Cognitive Architectures for Multi-Agent Teams.
   - [Custom Tools](#custom-tools)
 - [Multi-Agent Teams](#multi-agent-teams)
   - [Example: Finance Analysis Team](#example-finance-analysis-team)
+- [Conduct and Compose](#conduct-and-compose)
+- [MCP Integration](#mcp-integration)
+- [Streaming Support](#streaming-support)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
@@ -96,25 +99,25 @@ print(result)
 Orchestra supports a wide range of language models from a number of providers:
 
 ### OpenAI
-GPT-4o, GPT-4o Mini, & Custom defined models 
+GPT-4.5-preview, GPT-4o, GPT-4o Mini, & Custom defined models
 
 ### Anthropic
-Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, & Custom defined models 
+Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, Claude 3.7 Sonnet, & Custom defined models
 
 ### Openrouter
-GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & Custom defined models 
+GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & Custom defined models
 
 ### Ollama
-Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & Custom defined models 
+Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & Custom defined models
 
 ### Groq
 Mixtral 8x7B, Llama 3, Llama 3.1, Gemma, & Custom defined models
 
 ### TogetherAI
-Custom defined models 
+Custom defined models
 
 ### Gemini
-Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models 
+Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models
 
 ### Deepseek
 Deepseek Reasoner, Deepseek Chat, & Custom defined models
@@ -276,6 +279,59 @@ Note: this example requires the yahoofinance and yfinance packages to be install
 The `Conduct` and `Compose` tools are used to orchestrate and compose agents. Conduct is used to actually instruct and orchestrate a team of agents, while Compose is used in addition to the Conduct tool to enrich the orchestration process with additional complexity as a preprocessing step. It's important to note that Conduct is required for the orchestration process to work, while Compose is an optional additional tool that can be used to enrich the orchestration process.
 
 By combining agents, tasks, tools, and language models, you can create a wide range of workflows, from simple pipelines to complex multi-agent teams.
+
+## MCP Integration
+- **MCPOrchestra**: Adapter for integrating with Model Context Protocol (MCP) servers, allowing agents to use any MCP-compatible toolkits / servers
+  - Connect to FastMCP, Playwright, Slack, Filesystem, and other MCP-compatible servers
+  - List available tools from an MCP server
+  - Convert external tools into Orchestra-compatible callables for agents to use
+
+For documentation on MCP integration, visit our [MCP Integration Guide](https://docs.orchestra.org/orchestra/mcp-integration-with-orchestra).
+
+
+## Streaming Support
+
+Orchestra supports streaming of LLM responses. When using streaming, you need to use an async approach:
+
+```python
+import asyncio
+from mainframe_orchestra import Agent, Task, OpenaiModels, WebTools, set_verbosity
+
+set_verbosity(1)
+
+research_agent = Agent(
+    agent_id="research_assistant_1",
+    role="research assistant",
+    goal="answer user queries",
+    llm=OpenaiModels.gpt_4o,
+    tools={WebTools.exa_search}
+)
+
+async def research_task_streaming():
+    # Create the task and await it
+    task = await Task.create(
+        agent=research_agent,
+        instruction="Use your exa search tool to research quantum computing and explain it in a way that is easy to understand.",
+        stream=True
+    )
+
+    # Process the streaming output
+    async for chunk in task:
+        print(chunk, end="", flush=True)
+    print()  # Add a newline at the end
+
+# Run the async function
+if __name__ == "__main__":
+    asyncio.run(research_task_streaming())
+```
+
+The key points for streaming:
+1. Make your function async
+2. Set `stream=True` in the Task.create call
+3. Await the Task.create() call to get the streaming task
+4. Use `async for` to process the streaming chunks
+5. Run the async function with asyncio.run()
+
 
 ## Documentation
 
