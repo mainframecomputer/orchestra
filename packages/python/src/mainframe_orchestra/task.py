@@ -8,56 +8,8 @@ import re
 import asyncio
 import logging
 
-# Configure logger for the orchestra package
-logger = logging.getLogger("mainframe-orchestra")
-
-# ANSI escape codes for colors
-class Colors:
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    
-    # Regular colors
-    GRAY = '\033[38;5;240m'
-    RED = '\033[31m'
-    GREEN = '\033[32m'
-    YELLOW = '\033[33m'
-    BLUE = '\033[34m'
-    MAGENTA = '\033[35m'
-    CYAN = '\033[36m'
-    WHITE = '\033[37m'
-    
-    # Bright colors
-    BRIGHT_RED = '\033[91m'
-    BRIGHT_GREEN = '\033[92m'
-    BRIGHT_YELLOW = '\033[93m'
-    BRIGHT_BLUE = '\033[94m'
-    BRIGHT_MAGENTA = '\033[95m'
-    BRIGHT_CYAN = '\033[96m'
-    BRIGHT_WHITE = '\033[97m'
-
-
-class ColoredFormatter(logging.Formatter):
-    """Custom formatter with colors"""
-    
-    FORMATS = {
-        logging.DEBUG: Colors.GRAY + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET,
-        logging.INFO: Colors.GREEN + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET,
-        logging.WARNING: Colors.YELLOW + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET,
-        logging.ERROR: Colors.RED + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET,
-        logging.CRITICAL: Colors.BRIGHT_RED + Colors.BOLD + '%(asctime)s [%(levelname)s] Orchestra: %(message)s' + Colors.RESET
-    }
-
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno)
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
-
-# Add handler if none exists
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(ColoredFormatter())
-    logger.addHandler(handler)
+# Import the configured logger
+from .utils.logging_config import logger
 
 
 def parse_json_response(response: str) -> dict:
