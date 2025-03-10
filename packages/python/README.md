@@ -8,33 +8,37 @@
 Cognitive Architectures for Multi-Agent Teams.
 
 ## Table of Contents
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Core Components](#core-components)
-- [Language Models and Providers](#supported-language-models-and-providers)
-  - [OpenAI](#openai)
-  - [Anthropic](#anthropic)
-  - [Openrouter](#openrouter)
-  - [Ollama](#ollama)
-  - [Groq](#groq)
-  - [TogetherAI](#togetherai)
-  - [Gemini](#gemini)
-  - [Deepseek](#deepseek)
-- [Tools](#tools)
-  - [Built-in Tools](#built-in-tools)
-  - [Custom Tools](#custom-tools)
-- [Multi-Agent Teams](#multi-agent-teams)
-  - [Example: Finance Analysis Team](#example-finance-analysis-team)
-- [Conduct and Compose](#conduct-and-compose)
-- [MCP Integration](#mcp-integration)
-- [Streaming Support](#streaming-support)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
-- [Support](#support)
+- [Orchestra](#orchestra)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Key Features](#key-features)
+  - [Installation](#installation)
+  - [Quick Start](#quick-start)
+  - [Core Components](#core-components)
+  - [Supported Language Models and Providers](#supported-language-models-and-providers)
+    - [OpenAI](#openai)
+    - [Anthropic](#anthropic)
+    - [Openrouter](#openrouter)
+    - [Ollama](#ollama)
+    - [Groq](#groq)
+    - [TogetherAI](#togetherai)
+    - [Gemini](#gemini)
+    - [Deepseek](#deepseek)
+  - [Tools](#tools)
+    - [Built-in Tools](#built-in-tools)
+      - [Data \& File Operations](#data--file-operations)
+      - [Web \& API Integration](#web--api-integration)
+      - [Financial \& Data Analysis](#financial--data-analysis)
+      - [Media \& Content](#media--content)
+      - [Integration Tools](#integration-tools)
+    - [Custom Tools](#custom-tools)
+  - [Multi-Agent Teams](#multi-agent-teams)
+  - [Conduct and Compose](#conduct-and-compose)
+  - [Documentation](#documentation)
+  - [Contributing](#contributing)
+  - [License](#license)
+  - [Acknowledgments](#acknowledgments)
+  - [Support](#support)
 
 ## Overview
 
@@ -100,6 +104,24 @@ Orchestra supports a wide range of language models from a number of providers:
 
 ### OpenAI
 GPT-4.5-preview, GPT-4o, GPT-4o Mini, & Custom defined models
+
+Orchestra supports customizing the OpenAI base URL, allowing you to connect to OpenAI-compatible APIs or proxies:
+
+```python
+# Method 1: Set via environment variable
+import os
+os.environ["OPENAI_BASE_URL"] = "https://your-custom-endpoint.com/v1"
+
+# Method 2: Set globally for all OpenAI requests
+from mainframe_orchestra.llm import OpenaiModels
+OpenaiModels.set_base_url("https://your-custom-endpoint.com/v1")
+
+# Method 3: Set for a specific request
+response, error = await OpenaiModels.gpt_4o(
+    messages=[{"role": "user", "content": "Hello"}],
+    base_url="https://your-custom-endpoint.com/v1"
+)
+```
 
 ### Anthropic
 Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, Claude 3.7 Sonnet, & Custom defined models

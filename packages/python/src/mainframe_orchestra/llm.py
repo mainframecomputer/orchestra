@@ -67,6 +67,7 @@ except ImportError:
     class EnvConfig:
         def __init__(self):
             self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+            self.OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
             self.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
             self.GROQ_API_KEY = os.getenv("GROQ_API_KEY")
             self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -198,6 +199,20 @@ class OpenaiModels:
     """
     Class containing methods for interacting with OpenAI models.
     """
+    
+    # Class variable to store a default base URL for all requests
+    _default_base_url = None
+    
+    @classmethod
+    def set_base_url(cls, base_url: str) -> None:
+        """
+        Set a default base URL for all OpenAI requests.
+        
+        Args:
+            base_url (str): The base URL to use for all OpenAI requests.
+        """
+        cls._default_base_url = base_url
+        logger.info(f"Set default OpenAI base URL to: {base_url}")
 
     @staticmethod
     def _transform_o1_messages(
@@ -242,8 +257,9 @@ class OpenaiModels:
 
         return modified_messages
 
-    @staticmethod
+    @classmethod
     async def send_openai_request(
+        cls,
         model: str = "",
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
@@ -251,6 +267,7 @@ class OpenaiModels:
         require_json_output: bool = False,
         messages: Optional[List[Dict[str, str]]] = None,
         stream: bool = False,
+        base_url: Optional[str] = None,
     ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
         """
         Sends a request to an OpenAI model asynchronously and handles retries.
@@ -263,6 +280,7 @@ class OpenaiModels:
             require_json_output (bool, optional): If True, requests JSON output.
             messages (List[Dict[str, str]], optional): Direct messages to send to the API.
             stream (bool, optional): If True, enables streaming of responses.
+            base_url (Optional[str], optional): Custom base URL for the OpenAI API. If None, uses the OPENAI_BASE_URL from config or environment.
 
         Returns:
             Union[Tuple[str, Optional[Exception]], Iterator[str]]: The response text and any exception encountered, or an iterator for streaming.
@@ -280,7 +298,18 @@ class OpenaiModels:
 
         try:
             api_key = config.validate_api_key("OPENAI_API_KEY")
-            client = wrap_openai(AsyncOpenAI(api_key=api_key))
+            
+            # Use provided base_url, or fall back to class default, or config/env, or use default OpenAI URL
+            custom_base_url = base_url or cls._default_base_url or getattr(config, "OPENAI_BASE_URL", None)
+            
+            # Initialize the client with the base_url if provided
+            client_kwargs = {"api_key": api_key}
+            if custom_base_url:
+                client_kwargs["base_url"] = custom_base_url
+                logger.debug(f"Using custom OpenAI base URL: {custom_base_url}")
+                
+            client = wrap_openai(AsyncOpenAI(**client_kwargs))
+            
             if not client.api_key:
                 raise ValueError("OpenAI API key not found in environment variables.")
 
@@ -402,7 +431,8 @@ class OpenaiModels:
             require_json_output: bool = False,
             messages: Optional[List[Dict[str, str]]] = None,
             stream: bool = False,
-        ) -> Tuple[str, Optional[Exception]]:
+            base_url: Optional[str] = None,
+        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
             return await OpenaiModels.send_openai_request(
                 model=model_name,
                 image_data=image_data,
@@ -411,6 +441,7 @@ class OpenaiModels:
                 require_json_output=require_json_output,
                 messages=messages,
                 stream=stream,
+                base_url=base_url,
             )
 
         return wrapper
