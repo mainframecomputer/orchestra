@@ -46,7 +46,7 @@ class YahooFinanceTools:
             yf = check_yfinance()
             stock = yf.Ticker(ticker)
             info = stock.info
-            
+
             # Get the latest price
             history = stock.history(period="1d")
             latest_price = history['Close'].iloc[-1] if not history.empty else None
@@ -84,13 +84,14 @@ class YahooFinanceTools:
     def get_historical_data(ticker: str, period: str = "1y", interval: str = "1wk") -> str:
         """
         Get historical price data for a stock ticker.
-        Avoid overloading by using a wide interval on longer periods. e.g. Don't use 1y with 1d interval, or 1mo with a 1h interval.
-
-        IMPORTANT: Avoid overloading the API by using appropriate interval for period length.
-        For example:
-        - Don't use 1y period with intervals less than 1d.
-        - Don't use 6mo period with intervals less than 5d.
-        - For periods > 60d, use daily intervals or longer
+        This method enforces appropriate interval/period combinations to prevent excessive data requests:
+        - 1d period: intervals from 1m to 1h
+        - 5d period: intervals from 15m to 1d
+        - 7d period: intervals from 30m to 1d
+        - 1mo/60d period: intervals from 1h to 1d
+        - 3mo period: intervals from 1d to 1wk
+        - 6mo period: intervals from 1d to 1mo
+        - 1y+ period: intervals from 1wk to 3mo
 
         Valid periods: 1d, 5d, 7d, 60d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
         Valid intervals: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
@@ -104,24 +105,48 @@ class YahooFinanceTools:
             str: A JSON string containing historical price data.
 
         Raises:
-            ValueError: If the ticker is invalid or data cannot be retrieved.
+            ValueError: If the ticker is invalid, data cannot be retrieved, or an invalid period/interval combination is used.
         """
+        # Define interval groups for validation
+        minute_intervals = ['1m', '2m', '5m']
+        day_intervals = ['1d', '5d']
+        week_month_intervals = ['1wk', '1mo', '3mo']
+
+        # Enforce safe period-interval combinations
+        if period in ['1y', '2y', '5y', '10y', 'max', 'ytd'] and interval not in week_month_intervals:
+            raise ValueError(f"Period '{period}' requires interval of '1wk' or longer. Current interval: '{interval}'")
+
+        elif period in ['6mo'] and interval not in day_intervals + week_month_intervals:
+            raise ValueError(f"Period '{period}' requires interval of '1d' or longer. Current interval: '{interval}'")
+
+        elif period in ['3mo'] and interval not in day_intervals + week_month_intervals:
+            raise ValueError(f"Period '{period}' requires interval of '1d' or longer. Current interval: '{interval}'")
+
+        elif period in ['1mo', '60d'] and interval in minute_intervals:
+            raise ValueError(f"Period '{period}' requires interval of '15m' or longer. Current interval: '{interval}'")
+
+        elif period == '7d' and interval in minute_intervals:
+            raise ValueError(f"Period '7d' requires interval of '15m' or longer. Current interval: '{interval}'")
+
+        elif period == '5d' and interval in minute_intervals:
+            raise ValueError(f"Period '5d' requires interval of '15m' or longer. Current interval: '{interval}'")
+
         try:
             yf = check_yfinance()
             stock = yf.Ticker(ticker)
             data = stock.history(period=period, interval=interval)
-            
+
             # Reset index and ensure datetime handling is correct
             data = data.copy()
             data.index = data.index.strftime('%Y-%m-%dT%H:%M:%S%z')
             data_dict = data.reset_index().to_dict(orient='records')
-            
+
             # Round price values
             for record in data_dict:
                 for key in ['Open', 'High', 'Low', 'Close']:
                     if key in record:
                         record[key] = round(float(record[key]), 2)
-            
+
             # Serialize to JSON string
             return json.dumps(data_dict, default=str)
         except Exception as e:
@@ -137,7 +162,7 @@ class YahooFinanceTools:
         For example:
         - Don't use 1y period with 1m/5m intervals
         - Don't use 6mo period with intraday intervals
-        - For periods > 60d, use daily intervals or longer        
+        - For periods > 60d, use daily intervals or longer
 
         Args:
             tickers (Union[str, List[str]]): The stock ticker symbol or a list of symbols.
@@ -152,22 +177,22 @@ class YahooFinanceTools:
         """
         if isinstance(tickers, str):
             tickers = [tickers]
-        
+
         returns = {}
         try:
             check_yfinance()
             data = YahooFinanceTools.download_multiple_tickers(tickers, period=period, interval=interval)
-            
+
             if data.empty:
                 raise ValueError("No data returned from download_multiple_tickers")
-            
+
             for ticker in tickers:
-                if ('Close' in data.columns.get_level_values('Price') and 
+                if ('Close' in data.columns.get_level_values('Price') and
                     ticker in data.columns.get_level_values('Ticker')):
                     returns[ticker] = data[ticker]['Close'].pct_change()
                 else:
                     raise ValueError(f"'Close' column not found for ticker {ticker}")
-            
+
             return returns
         except Exception as e:
             raise ValueError(f"Error calculating returns for tickers {tickers}: {str(e)}")
@@ -229,28 +254,14 @@ class YahooFinanceTools:
     def download_multiple_tickers(tickers: List[str], period: str = "1mo", interval: str = "1d"):
         """
         Download historical data for multiple tickers simultaneously.
-        IMPORTANT: Avoid overloading the API by using appropriate interval for period length.
-
-        Safe combinations:
-        - Short-term (≤ 7 days):
-            ✓ period="1d" with interval="1m" to "90m"
-            ✓ period="5d" with interval="15m" to "1h"
-            ✓ period="7d" with interval="30m" to "1d"
-        
-        - Medium-term (≤ 60 days):
-            ✓ period="1mo" with interval="1h" to "1d"
-            ✓ period="2mo" with interval="1d" to "5d"
-            ✓ period="60d" with interval="1d" to "1wk"
-        
-        - Long-term (> 60 days):
-            ✓ period="6mo" with interval="1d" to "1mo"
-            ✓ period="1y" with interval="1wk" to "3mo"
-            ✓ period="2y" with interval="1wk" to "3mo"
-
-        Unsafe combinations (will raise error):
-        ✗ period="1y" with interval < "1d"
-        ✗ period="6mo" with interval < "1d"
-        ✗ period="3mo" with interval < "1h"
+        This method enforces appropriate interval/period combinations to prevent excessive data requests:
+        - 1d period: intervals from 1m to 1h
+        - 5d period: intervals from 15m to 1d
+        - 7d period: intervals from 30m to 1d
+        - 1mo/60d period: intervals from 1h to 1d
+        - 3mo period: intervals from 1d to 1wk
+        - 6mo period: intervals from 1d to 1mo
+        - 1y+ period: intervals from 1wk to 3mo
 
         Args:
             tickers (List[str]): A list of stock ticker symbols
@@ -264,6 +275,30 @@ class YahooFinanceTools:
         Raises:
             ValueError: If period/interval combination is unsafe or data cannot be retrieved
         """
+        # Define interval groups for validation
+        minute_intervals = ['1m', '2m', '5m']
+        day_intervals = ['1d', '5d']
+        week_month_intervals = ['1wk', '1mo', '3mo']
+
+        # Enforce safe period-interval combinations
+        if period in ['1y', '2y', '5y', '10y', 'max', 'ytd'] and interval not in week_month_intervals:
+            raise ValueError(f"Period '{period}' requires interval of '1wk' or longer. Current interval: '{interval}'")
+
+        elif period in ['6mo'] and interval not in day_intervals + week_month_intervals:
+            raise ValueError(f"Period '{period}' requires interval of '1d' or longer. Current interval: '{interval}'")
+
+        elif period in ['3mo'] and interval not in day_intervals + week_month_intervals:
+            raise ValueError(f"Period '{period}' requires interval of '1d' or longer. Current interval: '{interval}'")
+
+        elif period in ['1mo', '60d'] and interval in minute_intervals:
+            raise ValueError(f"Period '{period}' requires interval of '15m' or longer. Current interval: '{interval}'")
+
+        elif period == '7d' and interval in minute_intervals:
+            raise ValueError(f"Period '7d' requires interval of '15m' or longer. Current interval: '{interval}'")
+
+        elif period == '5d' and interval in minute_intervals:
+            raise ValueError(f"Period '5d' requires interval of '15m' or longer. Current interval: '{interval}'")
+
         try:
             yf = check_yfinance()
             data = yf.download(" ".join(tickers), period=period, interval=interval, group_by="ticker")
@@ -292,7 +327,7 @@ class YahooFinanceTools:
             return profile.to_dfs()
         except Exception as e:
             raise ValueError(f"Error retrieving asset profile for ticker {ticker}: {str(e)}")
-        
+
     @traced(type="tool")
     @staticmethod
     def get_balance_sheet(ticker: str, quarterly: bool = False):
@@ -318,7 +353,7 @@ class YahooFinanceTools:
             return balance_sheet.to_dfs()['Balance Sheet']
         except Exception as e:
             raise ValueError(f"Error retrieving balance sheet for ticker {ticker}: {str(e)}")
-        
+
     @traced(type="tool")
     @staticmethod
     def get_cash_flow(ticker: str, quarterly: bool = False):
@@ -344,11 +379,11 @@ class YahooFinanceTools:
             return cash_flow.to_dfs()['Cash Flow']
         except Exception as e:
             raise ValueError(f"Error retrieving cash flow statement for ticker {ticker}: {str(e)}")
-        
+
     @traced(type="tool")
     @staticmethod
     def get_income_statement(ticker: str, quarterly: bool = False):
-    
+
         """
         Get the income statement for a given stock ticker.
 
@@ -371,10 +406,10 @@ class YahooFinanceTools:
             return income_statement.to_dfs()['Income Statement']
         except Exception as e:
             raise ValueError(f"Error retrieving income statement for ticker {ticker}: {str(e)}")
-        
+
     @traced(type="tool")
     @staticmethod
-    def get_custom_historical_data(ticker: str, start_date: str, end_date: str, 
+    def get_custom_historical_data(ticker: str, start_date: str, end_date: str,
                                 frequency: str = '1d', event: str = 'history'):
         """
         Get custom historical data for a stock ticker with specified parameters.
@@ -395,14 +430,14 @@ class YahooFinanceTools:
         try:
             yahoofinance = check_yahoofinance()
             historical_data = yahoofinance.HistoricalPrices(
-                ticker, start_date, end_date, 
+                ticker, start_date, end_date,
                 frequency=yahoofinance.DataFrequency(frequency),
                 event=yahoofinance.DataEvent(event)
             )
             return historical_data.to_dfs()
         except Exception as e:
             raise ValueError(f"Error retrieving custom historical data for ticker {ticker}: {str(e)}")
-        
+
     @traced(type="tool")
     @staticmethod
     def technical_analysis(ticker: str, period: str = "1y") -> Dict[str, Any]:
@@ -422,31 +457,31 @@ class YahooFinanceTools:
         try:
             # Get historical data
             data = YahooFinanceTools.get_historical_data(ticker, period)
-            
+
             # Calculate moving averages
             data['SMA_50'] = data['Close'].rolling(window=50).mean()
             data['SMA_200'] = data['Close'].rolling(window=200).mean()
-            
+
             # Calculate Relative Strength Index (RSI)
             delta = data['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / loss
             data['RSI'] = 100 - (100 / (1 + rs))
-            
+
             # Calculate MACD
             exp1 = data['Close'].ewm(span=12, adjust=False).mean()
             exp2 = data['Close'].ewm(span=26, adjust=False).mean()
             data['MACD'] = exp1 - exp2
             data['Signal_Line'] = data['MACD'].ewm(span=9, adjust=False).mean()
-            
+
             # Calculate Bollinger Bands
             data['BB_Middle'] = data['Close'].rolling(window=20).mean()
             data['BB_Upper'] = data['BB_Middle'] + (data['Close'].rolling(window=20).std() * 2)
             data['BB_Lower'] = data['BB_Middle'] - (data['Close'].rolling(window=20).std() * 2)
-            
+
             latest = data.iloc[-1]
-            
+
             return {
                 "current_price": latest['Close'],
                 "sma_50": latest['SMA_50'],
@@ -461,7 +496,7 @@ class YahooFinanceTools:
             }
         except Exception as e:
             raise ValueError(f"Error performing technical analysis for ticker {ticker}: {str(e)}")
-        
+
     @traced(type="tool")
     @staticmethod
     def fundamental_analysis(ticker: str) -> Dict[str, Any]:
@@ -480,40 +515,40 @@ class YahooFinanceTools:
         try:
             # Get basic info
             info = YahooFinanceTools.get_ticker_info(ticker)
-            
+
             # Get financial statements
             income_statement = YahooFinanceTools.get_income_statement(ticker)
             balance_sheet = YahooFinanceTools.get_balance_sheet(ticker)
             cash_flow = YahooFinanceTools.get_cash_flow(ticker)
-            
+
             # Calculate additional metrics
             latest_year = income_statement.columns[0]
-            
+
             revenue = income_statement.loc['Total Revenue', latest_year]
             net_income = income_statement.loc['Net Income', latest_year]
             total_assets = balance_sheet.loc['Total Assets', latest_year]
             total_liabilities = balance_sheet.loc['Total Liabilities Net Minority Interest', latest_year]
             total_equity = balance_sheet.loc['Total Equity Gross Minority Interest', latest_year]
-            
+
             # Return on Equity (ROE)
             roe = net_income / total_equity
-            
+
             # Return on Assets (ROA)
             roa = net_income / total_assets
-            
+
             # Debt to Equity Ratio
             debt_to_equity = total_liabilities / total_equity
-            
+
             # Current Ratio
             current_assets = balance_sheet.loc['Current Assets', latest_year]
             current_liabilities = balance_sheet.loc['Current Liabilities', latest_year]
             current_ratio = current_assets / current_liabilities
-            
+
             # Free Cash Flow
             operating_cash_flow = cash_flow.loc['Operating Cash Flow', latest_year]
             capital_expenditures = cash_flow.loc['Capital Expenditure', latest_year]
             free_cash_flow = operating_cash_flow - capital_expenditures
-            
+
             return {
                 **info,
                 "revenue": revenue,
