@@ -17,7 +17,7 @@ class LinearTools:
             raise ValueError("LINEAR_API_KEY environment variable is required")
         if not self.team_id:
             raise ValueError("LINEAR_TEAM_ID environment variable is required")
-        
+
         self.url = 'https://api.linear.app/graphql'
         self.headers = {
             'Authorization': self.api_key,
@@ -39,6 +39,17 @@ class LinearTools:
     @classmethod
     @traced(type="tool")
     def get_team_issues(cls, team_id: str = None, status: Optional[str] = None) -> Union[List[Dict], str]:
+        """
+        Get all issues for a team.
+        If team_id is not provided, uses LINEAR_TEAM_ID from env.
+
+        Args:
+            team_id (str, optional): Team ID or key. If not provided, uses LINEAR_TEAM_ID from env
+            status (str, optional): Status to filter issues by. If not provided, returns all issues
+
+        Returns:
+            Union[List[Dict], str]: List of issues if successful, error message if failed
+        """
         try:
             client = cls()
             query = """
@@ -63,11 +74,11 @@ class LinearTools:
                     }
                 }
             """
-            
+
             variables = {"teamId": team_id or client.team_id}
             if status:
                 variables["status"] = status
-            
+
             result = client._execute_query(query, variables)
             return result["data"]["team"]["issues"]["nodes"]
         except Exception as e:
@@ -105,7 +116,7 @@ class LinearTools:
                     }
                 }
             """
-            
+
             result = client._execute_query(mutation, {
                 "issueId": issue_id,
                 "statusId": status_id
@@ -144,7 +155,7 @@ class LinearTools:
                     }
                 }
             """
-            
+
             result = client._execute_query(search_gql, {
                 "query": search_query
             })
@@ -177,18 +188,18 @@ class LinearTools:
                     }
                 }
             """
-            
+
             result = client._execute_query(query)
             teams = result["data"]["teams"]["nodes"]
-            
+
             print("Available teams:")
             for team in teams:
                 print(f"- {team['name']} (key: {team['key']})")
-            
+
             matching_team = next((team for team in teams if team['key'] == team_name), None)
             if not matching_team:
                 return f"No team found with key: {team_name}"
-            
+
             return matching_team
         except Exception as e:
             return f"Error fetching team: {str(e)}"
@@ -215,7 +226,7 @@ class LinearTools:
                     }
                 }
             """
-            
+
             result = client._execute_query(query, {"teamId": team_id or client.team_id})
             return result["data"]["team"]["states"]["nodes"]
         except Exception as e:
@@ -240,7 +251,7 @@ class LinearTools:
         """
         try:
             client = cls()
-            
+
             # Use the team_id directly if it looks like a UUID
             team_uuid = team_id or client.team_id
             if not team_uuid.startswith('-') and len(team_uuid.split('-')) == 5:
@@ -277,7 +288,7 @@ class LinearTools:
                     }
                 }
             """
-            
+
             result = client._execute_query(query, {
                 "title": title,
                 "description": description,
