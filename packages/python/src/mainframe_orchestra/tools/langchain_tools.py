@@ -33,24 +33,24 @@ class LangchainTools:
             # Convert kwargs to a single string input
             tool_input = json.dumps(kwargs)
             return tool_instance.run(tool_input)
-        
+
         tool_instance = langchain_tool()
         name = getattr(tool_instance, 'name', langchain_tool.__name__)
         description = getattr(tool_instance, 'description', "No description available")
-        
+
         # Build the docstring dynamically
         doc_parts = [
             f"- {name}:",
             f"    Description: {description}",
         ]
-        
+
         args_schema = getattr(langchain_tool, 'args_schema', None) or getattr(tool_instance, 'args_schema', None)
         if args_schema and issubclass(args_schema, BaseModel):
             doc_parts.append("    Arguments:")
             for field_name, field in args_schema.__fields__.items():
                 field_desc = field.field_info.description or "No description"
                 doc_parts.append(f"      - {field_name}: {field_desc}")
-        
+
         wrapped_tool.__name__ = name
         wrapped_tool.__doc__ = "\n".join(doc_parts)
         return wrapped_tool
@@ -63,11 +63,11 @@ class LangchainTools:
 
         if tool_name not in _module_lookup:
             raise ValueError(f"Unknown Langchain tool: {tool_name}")
-        
+
         module_path = _module_lookup[tool_name]
         module = importlib.import_module(module_path)
         tool_class = getattr(module, tool_name)
-        
+
         wrapped_tool = LangchainTools._wrap(tool_class)
         return wrapped_tool
 
@@ -92,7 +92,7 @@ class LangchainTools:
         except ImportError:
             print("Error: langchain-community is not installed. Please install it using 'pip install langchain-community'.")
             return []
-        
+
         return list(_module_lookup.keys())
 
     @classmethod
@@ -124,16 +124,16 @@ class LangchainTools:
 
         if tool_name not in _module_lookup:
             raise ValueError(f"Unknown Langchain tool: {tool_name}")
-        
+
         module_path = _module_lookup[tool_name]
         import importlib
         module = importlib.import_module(module_path)
         tool_class = getattr(module, tool_name)
-        
+
         tool_instance = tool_class()
         name = getattr(tool_instance, 'name', tool_class.__name__)
         description = getattr(tool_instance, 'description', "No description available")
-        
+
         return {
             "name": name,
             "description": description,

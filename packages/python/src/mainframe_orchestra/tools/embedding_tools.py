@@ -50,7 +50,7 @@ class EmbeddingsTools:
         if provider == "openai" or provider == "cohere" or provider == "mistral":
             if model in EmbeddingsTools.MODEL_DIMENSIONS:
                 return EmbeddingsTools.MODEL_DIMENSIONS[model]
-        
+
         raise ValueError(f"Unsupported embedding model: {model} for provider: {provider}")
 
     @traced(type="tool")
@@ -64,7 +64,7 @@ class EmbeddingsTools:
 
         Args:
             input_text (Union[str, List[str]]): The input text or list of texts to embed.
-            model (Literal["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"]): 
+            model (Literal["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"]):
                 The model to use for generating embeddings. Default is "text-embedding-3-small".
 
         Returns:
@@ -149,7 +149,7 @@ class EmbeddingsTools:
         api_key = os.getenv("COHERE_API_KEY")
         if not api_key:
             raise ValueError("COHERE_API_KEY environment variable is not set")
-        
+
         # Check for cohere
         try:
             import cohere
@@ -199,7 +199,7 @@ class EmbeddingsTools:
         Note:
             This method requires a valid Mistral AI API key to be set in the MISTRAL_API_KEY environment variable.
         """
-        
+
         # Get API key from environment variable
         api_key = os.getenv("MISTRAL_API_KEY")
         if not api_key:
@@ -264,8 +264,8 @@ class EmbeddingsTools:
                 raise ValueError(f"Unsupported OpenAI embedding model: {model}")
         elif provider == "cohere":
             if model in [
-                "embed-english-v3.0", "embed-english-light-v3.0", "embed-english-v2.0", 
-                "embed-english-light-v2.0", "embed-multilingual-v3.0", "embed-multilingual-light-v3.0", 
+                "embed-english-v3.0", "embed-english-light-v3.0", "embed-english-v2.0",
+                "embed-english-light-v2.0", "embed-multilingual-v3.0", "embed-multilingual-light-v3.0",
                 "embed-multilingual-v2.0"
             ]:
                 return EmbeddingsTools.get_cohere_embeddings(input_text, model)

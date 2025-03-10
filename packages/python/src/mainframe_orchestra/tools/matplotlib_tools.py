@@ -21,7 +21,7 @@ class MatplotlibTools:
 
     @traced(type="tool")
     @staticmethod
-    def create_line_plot(x: List[List[Union[float, str]]], y: List[List[float]], title: str = None, xlabel: str = "X", ylabel: str = "Y", 
+    def create_line_plot(x: List[List[Union[float, str]]], y: List[List[float]], title: str = None, xlabel: str = "X", ylabel: str = "Y",
                          output_file: str = "line_plot.png") -> Union[Any, str]:
         """
         Create a line plot using the provided x and y data.
@@ -42,7 +42,7 @@ class MatplotlibTools:
             np, plt, mdates = check_matplotlib_dependencies()
             if len(x) != len(y):
                 raise ValueError(f"The number of x and y lists must be equal. Got {len(x)} x-lists and {len(y)} y-lists. Check your data and try again.")
-            
+
             for i, (xi, yi) in enumerate(zip(x, y)):
                 if not isinstance(xi, list) or not isinstance(yi, list):
                     raise TypeError(f"Both x[{i}] and y[{i}] must be lists. Check your data and try again.")
@@ -120,10 +120,10 @@ class MatplotlibTools:
             plt.close()
 
             return plot_path
-        
+
         except ImportError as e:
             return str(e)
-        
+
         except ValueError as e:
             error_msg = f"Error: {str(e)} Please ensure x and y have the same length."
             print(error_msg)
@@ -216,7 +216,7 @@ class MatplotlibTools:
             plt.close()
 
             return plot_path
-        
+
         except ImportError as e:
             return str(e)
         except Exception as e:
@@ -225,7 +225,7 @@ class MatplotlibTools:
             return error_msg
 
     @traced(type="tool")
-    @staticmethod 
+    @staticmethod
     def create_heatmap(data: List[List[float]], title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
         """
         Create a heatmap using the provided 2D data.
@@ -260,7 +260,7 @@ class MatplotlibTools:
             plt.close()
 
             return plot_path
-        
+
         except ImportError as e:
             return str(e)
         except Exception as e:

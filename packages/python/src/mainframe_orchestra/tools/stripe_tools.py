@@ -29,7 +29,7 @@ class StripeTools:
     def check_balance(cls) -> str:
         """
         Retrieve the current balance of your Stripe account.
-        
+
         Returns:
             str: JSON string containing available and pending balances in each currency
         """

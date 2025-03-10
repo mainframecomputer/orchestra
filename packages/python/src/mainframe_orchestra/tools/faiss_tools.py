@@ -20,7 +20,7 @@ class FAISSTools:
             import faiss
         except ModuleNotFoundError:
             raise ImportError("faiss is required for FAISSTools. Install with `pip install faiss-cpu` or `pip install faiss-gpu`")
-        
+
         self.dimension = dimension
         self.metric = metric
         self.index = None
@@ -65,13 +65,13 @@ class FAISSTools:
         if not os.path.exists(index_path):
             raise FileNotFoundError(f"Index file not found: {index_path}")
         self.index = self.faiss.read_index(index_path)
-        
+
         metadata_path = f"{index_path}.metadata"
         if not os.path.exists(metadata_path):
             raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
         with open(metadata_path, 'r') as f:
             self.metadata = json.load(f)
-        
+
         self.dimension = self.index.d
         self.embedding_model = self.metadata.get('embedding_model')
 
@@ -101,11 +101,11 @@ class FAISSTools:
         """
         if vectors.shape[1] != self.dimension:
             raise ValueError(f"Vector dimension {vectors.shape[1]} does not match index dimension {self.dimension}")
-        
+
         if self.metric == "IP":
             # Normalize vectors for Inner Product similarity
             vectors = np.apply_along_axis(self.normalize_vector, 1, vectors)
-        
+
         self.index.add(vectors)
 
     @traced(type="tool")
@@ -125,11 +125,11 @@ class FAISSTools:
         """
         if query_vectors.shape[1] != self.dimension:
             raise ValueError(f"Query vector dimension {query_vectors.shape[1]} does not match index dimension {self.dimension}")
-        
+
         if self.metric == "IP":
             # Normalize query vectors for Inner Product similarity
             query_vectors = np.apply_along_axis(self.normalize_vector, 1, query_vectors)
-        
+
         distances, indices = self.index.search(query_vectors, top_k)
         return distances, indices
 

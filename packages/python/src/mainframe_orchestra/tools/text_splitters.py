@@ -17,10 +17,10 @@ class SemanticSplitter:
 
     @traced(type="tool")
     @staticmethod
-    def chunk_text(text: Union[str, List[str]], rearrange: bool = False, 
+    def chunk_text(text: Union[str, List[str]], rearrange: bool = False,
                    embedding_provider: str = "openai", embedding_model: str = "text-embedding-3-small") -> List[str]:
         splitter = SemanticSplitter(embedding_provider, embedding_model)
-        
+
         if isinstance(text, str):
             return splitter._process_single_text(text, rearrange)
         elif isinstance(text, list):
@@ -37,7 +37,7 @@ class SemanticSplitter:
         embeddings = self._embed_segments(segments)
         communities = self._detect_communities(embeddings)
         chunks = self._create_chunks_from_communities(segments, communities, rearrange)
-        
+
         print(f"Created {len(chunks)} non-empty chunks for this document")
         return chunks
 
@@ -57,16 +57,16 @@ class SemanticSplitter:
     def _detect_communities(self, embeddings: np.ndarray) -> List[int]:
         if embeddings.shape[0] < 2:
             return [0]
-        
+
         G = self._create_similarity_graph(embeddings, similarity_threshold=0.55)
-        
+
         partition = self._find_optimal_partition(G, resolution=0.35)
-        
+
         communities = partition.membership
-        
+
         num_communities = len(set(communities))
         print(f"Communities: {num_communities}")
-        
+
         return communities
 
     @traced(type="tool")
@@ -77,23 +77,23 @@ class SemanticSplitter:
                 if community not in community_groups:
                     community_groups[community] = []
                 community_groups[community].append(segment)
-            
+
             chunks = [' '.join(group).strip() for group in community_groups.values() if group]
         else:
             chunks = []
             current_community = communities[0]
             current_chunk = []
-            
+
             for segment, community in zip(segments, communities):
                 if community != current_community:
                     chunks.append(' '.join(current_chunk).strip())
                     current_chunk = []
                     current_community = community
                 current_chunk.append(segment)
-            
+
             if current_chunk:
                 chunks.append(' '.join(current_chunk).strip())
-        
+
         return [chunk for chunk in chunks if chunk]
 
     @traced(type="tool")
@@ -106,9 +106,9 @@ class SemanticSplitter:
         np.fill_diagonal(similarities, 0)
         similarities = np.maximum(similarities, 0)
         similarities = (similarities - np.min(similarities)) / (np.max(similarities) - np.min(similarities))
-        
+
         adjacency_matrix = (similarities >= similarity_threshold).astype(int)
-        
+
         G = ig.Graph.Adjacency(adjacency_matrix.tolist())
         G.es['weight'] = similarities[np.where(adjacency_matrix)]
         return G
@@ -116,7 +116,7 @@ class SemanticSplitter:
     @traced(type="tool")
     def _find_optimal_partition(self, G: ig.Graph, resolution: float) -> la.VertexPartition:
         return la.find_partition(
-            G, 
+            G,
             la.CPMVertexPartition,
             weights='weight',
             resolution_parameter=resolution
@@ -127,7 +127,7 @@ class SemanticSplitter:
         community_sizes = {}
         for comm in membership:
             community_sizes[comm] = community_sizes.get(comm, 0) + 1
-        
+
         new_membership = []
         current_comm = max(membership) + 1
         for i, comm in enumerate(membership):
@@ -137,7 +137,7 @@ class SemanticSplitter:
                 new_membership.append(current_comm)
             else:
                 new_membership.append(comm)
-        
+
         return new_membership
 
 class SentenceSplitter:
@@ -146,7 +146,7 @@ class SentenceSplitter:
     def split_text_by_sentences(text: str, chunk_size: int = 5, overlap: int = 1, language: str = 'en') -> List[str]:
         """
         Split the text into chunks of sentences with overlap.
-        
+
         :param text: The input text to split.
         :param chunk_size: The number of sentences per chunk.
         :param overlap: The number of sentences to overlap between chunks.
@@ -156,10 +156,10 @@ class SentenceSplitter:
         splitter = ExternalSentenceSplitter(language=language)
         sentences = splitter.split(text)
         chunks = []
-        
+
         for i in range(0, len(sentences), chunk_size - overlap):
             chunk = ' '.join(sentences[i:i + chunk_size])
             chunks.append(chunk.strip())
-        
+
         print(f"Created {len(chunks)} chunks with {chunk_size} sentences each and {overlap} sentence overlap")
         return chunks
