@@ -30,7 +30,7 @@ class PineconeTools:
         pinecone_client = check_pinecone().Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         return pinecone_client.Index(name)
 
-    
+
     @traced(type="tool")
     def create_index(self, name: str, dimension: int, metric: str = "cosine", cloud: str = "aws", region: str = "us-east-1") -> None:
         """

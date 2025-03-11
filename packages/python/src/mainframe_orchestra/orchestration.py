@@ -228,7 +228,7 @@ class Conduct:
             {available_agents}
 
             Tool name: conduct_tool
-            
+
             Args:
                 tasks (List[dict]): List of task objects with format:
                     [
@@ -300,7 +300,7 @@ Your responses take the form of well-structured plans that read like a score, gu
                     {
                         "role": "user",
                         "content": f"""Create a detailed plan for achieving this goal: {goal}
-                    
+
 Available agents and their capabilities:
 {chr(10).join(f'- {agent.agent_id}: {agent.goal}' for agent in agents)}
 

@@ -47,19 +47,19 @@ class WebTools:
             This function requires the EXA_API_KEY environment variable to be set.
         """
         print(f"Searching Exa for: '{queries}'")
-        
+
         # Load environment variables from .env file
         load_dotenv()
-        
+
         # Retrieve the API key from environment variables
         api_key = os.getenv("EXA_API_KEY")
         if not api_key:
             raise ValueError("EXA_API_KEY environment variable is not set")
-        
+
         # Convert single query to list for consistent processing
         if isinstance(queries, str):
             queries = [queries]
-        
+
         # Define the API endpoint and headers
         url = "https://api.exa.ai/search"
         headers = {
@@ -110,10 +110,10 @@ class WebTools:
                             "highlights": "\n".join(result["highlights"])
                         }
                         query_results["data"].append(structured_result)
-                    
+
                     structured_data["results"].append(query_results)
                     break  # Success, break the retry loop
-                
+
                 except requests.exceptions.HTTPError as e:
                     print(f"HTTP error occurred for query '{query}': {e}")
                 except requests.exceptions.RequestException as e:
@@ -147,7 +147,7 @@ class WebTools:
         """
         if isinstance(urls, str):
             urls = [urls]
-        
+
         if not isinstance(include_html, bool) or not isinstance(include_links, bool):
             raise ValueError("include_html and include_links must be boolean values")
 
@@ -170,7 +170,7 @@ class WebTools:
 
                 # Try to find the main content
                 main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
-                
+
                 if main_content:
                     content_soup = main_content
                 else:
@@ -229,7 +229,7 @@ class WebTools:
         """
         # Load environment variables
         load_dotenv()
-        
+
         # Get API key from environment variable
         api_key = os.getenv("SERPER_API_KEY")
         if not api_key:
@@ -274,10 +274,10 @@ class WebTools:
                 # Make the API call
                 response = requests.post(url, headers=headers, data=json.dumps(payload))
                 response.raise_for_status()  # Raise an exception for HTTP errors
-                
+
                 # Parse the JSON response
                 results = response.json()
-                
+
                 # Format the results
                 formatted_results = ""
 
@@ -313,7 +313,7 @@ class WebTools:
                         formatted_results += f"   URL: {item.get('link', 'No Link')}\n\n"
 
                 results_list.append(formatted_results.strip())
-            
+
             except requests.RequestException as e:
                 results_list.append(f"Error making request to Serper API for query '{single_query}': {str(e)}")
             except json.JSONDecodeError:
@@ -339,10 +339,10 @@ class WebTools:
             json.JSONDecodeError: If the API response cannot be parsed as JSON.
         """
         #print(f"Attempting to scrape URL(s): {urls}")
-        
+
         # Load environment variables
         load_dotenv()
-        
+
         # Get API key from environment variable
         api_key = os.getenv("SERPER_API_KEY")
         if not api_key:
@@ -401,7 +401,7 @@ class WebTools:
             requests.RequestException: If there's an error with the HTTP request.
         """
         base_url = "http://export.arxiv.org/api/query"
-        
+
         params = {
             "search_query": query,
             "start": 0,
@@ -500,7 +500,7 @@ class WebTools:
             response = requests.get(f"{BASE_URL}/{endpoint}", params=params)
             response.raise_for_status()
             data = response.json()
-            
+
             if 'error' in data:
                 raise ValueError(f"API Error: {data['error']['message']}")
         except requests.RequestException as e:

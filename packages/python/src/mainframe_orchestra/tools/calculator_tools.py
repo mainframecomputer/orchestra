@@ -29,7 +29,7 @@ class CalculatorTools:
         # Convert all args to float, except for factorial which requires int
         if operation != 'factorial':
             args = [float(arg) for arg in args]
-        
+
         result = args[0]
 
         if operation in ['add', 'subtract', 'multiply', 'divide']:

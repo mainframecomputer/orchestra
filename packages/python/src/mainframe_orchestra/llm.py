@@ -6,6 +6,8 @@ import os
 import random
 import re
 import time
+import requests
+import base64
 from typing import AsyncGenerator, Dict, Iterator, List, Optional, Tuple, Union
 
 import google.generativeai as genai
@@ -28,7 +30,6 @@ from anthropic import (
 from anthropic import (
     RateLimitError as AnthropicRateLimitError,
 )
-from groq import Groq
 from halo import Halo
 from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
@@ -43,7 +44,6 @@ from openai import (
 )
 from openai import (
     AsyncOpenAI,
-    OpenAI,
 )
 from openai import (
     AuthenticationError as OpenAIAuthenticationError,
@@ -54,9 +54,11 @@ from openai import (
 from openai import (
     RateLimitError as OpenAIRateLimitError,
 )
-from openai.types.chat import ChatCompletion as OpenAIChatCompletion
 
 from .utils.braintrust_utils import wrap_openai
+
+# Import the configured logger
+from .utils.logging_config import logger
 
 # Import config, fall back to environment variables if not found
 try:
@@ -86,39 +88,6 @@ debug = False
 MAX_RETRIES = 3
 BASE_DELAY = 1
 MAX_DELAY = 10
-
-# Setup logging
-logger = logging.getLogger("mainframe-orchestra")
-log_level = os.getenv("ORCHESTRA_LOG_LEVEL", "INFO").upper()
-logger.setLevel(getattr(logging, log_level, logging.INFO))
-
-# Configure third-party loggers
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("openai").setLevel(logging.WARNING)
-logging.getLogger("asyncio").setLevel(logging.WARNING)
-logging.getLogger("anthropic").setLevel(logging.WARNING)
-logging.getLogger("groq").setLevel(logging.WARNING)
-logging.getLogger("groq._base_client").setLevel(logging.WARNING)
-
-# Ensure we have at least a console handler if none exists
-if not logger.handlers:
-    # Console handler - keep it clean for user output
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter("%(message)s"))
-    logger.addHandler(console_handler)
-
-    # Setup file logging if ORCHESTRA_LOG_FILE is set
-    log_file = os.getenv("ORCHESTRA_LOG_FILE")
-    if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-            )
-        )
-        file_handler.setLevel(logging.DEBUG)  # File logs capture everything
-        logger.addHandler(file_handler)
 
 
 def set_verbosity(value: Union[str, bool, int]):
@@ -195,21 +164,202 @@ def parse_json_response(response: str) -> dict:
             raise ValueError(f"Invalid JSON structure: {e}")
 
 
+class OpenAICompatibleProvider:
+    """
+    Base class for handling OpenAI-compatible API providers.
+    This handles providers that use the OpenAI API format but with different base URLs.
+    """
+
+    @staticmethod
+    async def _prepare_image_data(image_data: Union[str, List[str]], provider_name: str) -> Union[str, List[str]]:
+        """Prepare image data according to provider requirements"""
+        if not image_data:
+            return image_data
+
+        images = [image_data] if isinstance(image_data, str) else image_data
+        processed_images = []
+
+        for img in images:
+            if img.startswith(("http://", "https://")):
+                # Download and convert URL to base64
+                response = requests.get(img)
+                response.raise_for_status()
+                base64_data = base64.b64encode(response.content).decode('utf-8')
+
+                if provider_name in ["OpenAI", "Gemini"]:
+                    # These providers need data URL format
+                    processed_images.append(f"data:image/jpeg;base64,{base64_data}")
+                else:
+                    # Others can handle raw base64
+                    processed_images.append(base64_data)
+            else:
+                # Handle existing base64 data
+                if provider_name in ["OpenAI", "Gemini"] and not img.startswith("data:"):
+                    # Add data URL prefix if missing
+                    processed_images.append(f"data:image/jpeg;base64,{img}")
+                else:
+                    processed_images.append(img)
+
+        return processed_images[0] if isinstance(image_data, str) else processed_images
+
+    @staticmethod
+    async def send_request(
+        model: str,
+        provider_name: str,
+        base_url: str,
+        api_key: str,
+        image_data: Union[List[str], str, None] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        require_json_output: bool = False,
+        messages: Optional[List[Dict[str, str]]] = None,
+        stream: bool = False,
+        additional_params: Optional[Dict] = None,
+    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+        """Sends a request to an OpenAI-compatible API provider"""
+        try:
+            # Process image data if present
+            if image_data:
+                image_data = await OpenAICompatibleProvider._prepare_image_data(image_data, provider_name)
+
+            spinner = Halo(text=f"Sending request to {provider_name}...", spinner="dots")
+            spinner.start()
+
+            # Initialize client
+            client_kwargs = {"api_key": api_key}
+            if base_url:
+                client_kwargs["base_url"] = base_url
+
+            client = wrap_openai(AsyncOpenAI(**client_kwargs))
+
+            # Prepare request parameters
+            request_params = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+            }
+
+            # Add max_tokens if provided
+            if max_tokens is not None:
+                request_params["max_tokens"] = max_tokens
+
+            # Add JSON output format if required
+            if require_json_output:
+                request_params["response_format"] = {"type": "json_object"}
+
+            # Add any additional parameters
+            if additional_params:
+                request_params.update(additional_params)
+
+            # Log request details
+            logger.debug(
+                f"[LLM] {provider_name} ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+            )
+
+            if stream:
+                spinner.stop()  # Stop spinner before streaming
+
+                async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started")
+                    try:
+                        stream_params = {**request_params, "stream": True}
+                        response = await client.chat.completions.create(**stream_params)
+                        async for chunk in response:
+                            if chunk.choices[0].delta.content:
+                                content = chunk.choices[0].delta.content
+                                full_message += content
+                                yield content
+                        logger.debug("Stream complete")
+                        logger.debug(f"Full message: {full_message}")
+                        yield "\n"
+                    except OpenAIAuthenticationError as e:
+                        logger.error(
+                            f"Authentication failed: Please check your {provider_name} API key. Error: {str(e)}"
+                        )
+                        yield ""
+                    except OpenAIBadRequestError as e:
+                        logger.error(f"Invalid request parameters: {str(e)}")
+                        yield ""
+                    except (OpenAIConnectionError, OpenAITimeoutError) as e:
+                        logger.error(f"Connection error: {str(e)}")
+                        yield ""
+                    except OpenAIRateLimitError as e:
+                        logger.error(f"Rate limit exceeded: {str(e)}")
+                        yield ""
+                    except OpenAIAPIError as e:
+                        logger.error(f"{provider_name} API error: {str(e)}")
+                        yield ""
+                    except Exception as e:
+                        logger.error(f"An unexpected error occurred during streaming: {e}")
+                        yield ""
+
+                return stream_generator()
+
+            # Non-streaming logic
+            spinner.text = f"Waiting for {model} response..."
+            response = await client.chat.completions.create(**request_params)
+
+            content = response.choices[0].message.content
+            spinner.succeed("Request completed")
+
+            # Process JSON responses
+            if require_json_output:
+                try:
+                    json_response = parse_json_response(content)
+                    compressed_content = json.dumps(json_response, separators=(",", ":"))
+                    logger.debug(f"[LLM] API Response: {compressed_content}")
+                    return compressed_content, None
+                except ValueError as e:
+                    return "", e
+
+            # For non-JSON responses
+            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
+            return content.strip(), None
+
+        except OpenAIAuthenticationError as e:
+            spinner.fail("Authentication failed")
+            logger.error(
+                f"Authentication failed: Please check your {provider_name} API key. Error: {str(e)}"
+            )
+            return "", e
+        except OpenAIBadRequestError as e:
+            spinner.fail("Invalid request")
+            logger.error(f"Invalid request parameters: {str(e)}")
+            return "", e
+        except (OpenAIConnectionError, OpenAITimeoutError) as e:
+            spinner.fail("Connection failed")
+            logger.error(f"Connection error: {str(e)}")
+            return "", e
+        except OpenAIRateLimitError as e:
+            spinner.fail("Rate limit exceeded")
+            logger.error(f"Rate limit exceeded: {str(e)}")
+            return "", e
+        except OpenAIAPIError as e:
+            spinner.fail("API Error")
+            logger.error(f"{provider_name} API error: {str(e)}")
+            return "", e
+        except Exception as e:
+            spinner.fail("Request failed")
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+            return "", e
+        finally:
+            if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
+
+
 class OpenaiModels:
     """
     Class containing methods for interacting with OpenAI models.
     """
-    
+
     # Class variable to store a default base URL for all requests
     _default_base_url = None
-    
+
     @classmethod
     def set_base_url(cls, base_url: str) -> None:
         """
         Set a default base URL for all OpenAI requests.
-        
-        Args:
-            base_url (str): The base URL to use for all OpenAI requests.
         """
         cls._default_base_url = base_url
         logger.info(f"Set default OpenAI base URL to: {base_url}")
@@ -220,13 +370,6 @@ class OpenaiModels:
     ) -> List[Dict[str, str]]:
         """
         Transform messages for o1 models by handling system messages and JSON requirements.
-
-        Args:
-            messages (List[Dict[str, str]]): Original messages array
-            require_json_output (bool): Whether JSON output is required
-
-        Returns:
-            List[Dict[str, str]]: Modified messages array for o1 models
         """
         modified_messages = []
         system_content = ""
@@ -271,20 +414,29 @@ class OpenaiModels:
     ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
         """
         Sends a request to an OpenAI model asynchronously and handles retries.
-
-        Args:
-            model (str): The model name.
-            image_data (Union[List[str], str, None], optional): Image data if any.
-            temperature (float, optional): Sampling temperature.
-            max_tokens (int, optional): Maximum tokens in the response.
-            require_json_output (bool, optional): If True, requests JSON output.
-            messages (List[Dict[str, str]], optional): Direct messages to send to the API.
-            stream (bool, optional): If True, enables streaming of responses.
-            base_url (Optional[str], optional): Custom base URL for the OpenAI API. If None, uses the OPENAI_BASE_URL from config or environment.
-
-        Returns:
-            Union[Tuple[str, Optional[Exception]], Iterator[str]]: The response text and any exception encountered, or an iterator for streaming.
         """
+        # Process images if present
+        if image_data and messages:
+            last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
+            if last_user_msg:
+                content = []
+                if isinstance(image_data, str):
+                    image_data = [image_data]
+
+                for image in image_data:
+                    if image.startswith(("http://", "https://")):
+                        content.append({"type": "image_url", "image_url": {"url": image}})
+                    else:
+                        content.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{image}"},
+                            }
+                        )
+
+                # Add original text content
+                content.append({"type": "text", "text": last_user_msg["content"]})
+                last_user_msg["content"] = content
 
         # Add check for non-streaming models (currently only o1 models) at the start
         if stream and model in ["o1-mini", "o1-preview"]:
@@ -293,134 +445,38 @@ class OpenaiModels:
             )
             stream = False
 
-        spinner = Halo(text="Sending request to OpenAI...", spinner="dots")
-        spinner.start()
+        # Get API key
+        api_key = config.validate_api_key("OPENAI_API_KEY")
 
-        try:
-            api_key = config.validate_api_key("OPENAI_API_KEY")
-            
-            # Use provided base_url, or fall back to class default, or config/env, or use default OpenAI URL
-            custom_base_url = base_url or cls._default_base_url or getattr(config, "OPENAI_BASE_URL", None)
-            
-            # Initialize the client with the base_url if provided
-            client_kwargs = {"api_key": api_key}
-            if custom_base_url:
-                client_kwargs["base_url"] = custom_base_url
-                logger.debug(f"Using custom OpenAI base URL: {custom_base_url}")
-                
-            client = wrap_openai(AsyncOpenAI(**client_kwargs))
-            
-            if not client.api_key:
-                raise ValueError("OpenAI API key not found in environment variables.")
+        # Use provided base_url, or fall back to class default, or config/env
+        custom_base_url = (
+            base_url or cls._default_base_url or getattr(config, "OPENAI_BASE_URL", None)
+        )
 
-            # Handle all o1-specific modifications
-            if model in ["o1-mini", "o1-preview"]:
-                messages = OpenaiModels._transform_o1_messages(messages, require_json_output)
-                request_params = {
-                    "model": model,
-                    "messages": messages,
-                    "max_completion_tokens": max_tokens,
-                }
-            else:
-                request_params = {
-                    "model": model,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                }
-                if require_json_output:
-                    request_params["response_format"] = {"type": "json_object"}
+        # Handle o1 model message transformations
+        additional_params = None
+        if model in ["o1-mini", "o1-preview"]:
+            messages = cls._transform_o1_messages(messages, require_json_output)
+            # o1 models use max_completion_tokens instead of max_tokens
+            additional_params = {"max_completion_tokens": max_tokens}
+            # Set max_tokens to None as it's not used
+            max_tokens = None
+            # Override temperature for o1 models - they only support temperature=1
+            temperature = 1.0
 
-            # Log all request details including parameters
-            logger.debug(
-                f"[LLM] OpenAI ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
-            )
-
-            if stream:
-                spinner.stop()  # Stop spinner before streaming
-
-                async def stream_generator():
-                    full_message = ""
-                    logger.debug("Stream started")
-                    try:
-                        stream_params = {**request_params, "stream": True}
-                        response = await client.chat.completions.create(**stream_params)
-                        async for chunk in response:
-                            if chunk.choices[0].delta.content:
-                                content = chunk.choices[0].delta.content
-                                full_message += content
-                                yield content
-                        logger.debug(f"Stream complete: {full_message}")
-                    except OpenAIAuthenticationError as e:
-                        logger.error(
-                            f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}"
-                        )
-                        yield ""
-                    except OpenAIBadRequestError as e:
-                        logger.error(f"Invalid request parameters: {str(e)}")
-                        yield ""
-                    except (OpenAIConnectionError, OpenAITimeoutError) as e:
-                        logger.error(f"Connection error: {str(e)}")
-                        yield ""
-                    except OpenAIRateLimitError as e:
-                        logger.error(f"Rate limit exceeded: {str(e)}")
-                        yield ""
-                    except OpenAIAPIError as e:
-                        logger.error(f"OpenAI API error: {str(e)}")
-                        yield ""
-                    except Exception as e:
-                        logger.error(f"An unexpected error occurred during streaming: {e}")
-                        yield ""
-
-                return stream_generator()
-
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response: OpenAIChatCompletion = await client.chat.completions.create(**request_params)
-
-            content = response.choices[0].message.content
-            spinner.succeed("Request completed")
-
-            try:
-                # Attempt to parse the API response as JSON and reformat it as compact, single-line JSON.
-                compact_response = json.dumps(json.loads(content.strip()), separators=(",", ":"))
-            except ValueError:
-                # If it's not JSON, preserve newlines but clean up extra whitespace within lines
-                lines = content.strip().splitlines()
-                compact_response = "\n".join(line.strip() for line in lines)
-
-            logger.debug(f"API Response: {compact_response}")
-            return compact_response, None
-
-        except OpenAIAuthenticationError as e:
-            spinner.fail("Authentication failed")
-            logger.error(
-                f"Authentication failed: Please check your OpenAI API key. Error: {str(e)}"
-            )
-            return "", e
-        except OpenAIBadRequestError as e:
-            spinner.fail("Invalid request")
-            logger.error(f"Invalid request parameters: {str(e)}")
-            return "", e
-        except (OpenAIConnectionError, OpenAITimeoutError) as e:
-            spinner.fail("Connection failed")
-            logger.error(f"Connection error: {str(e)}")
-            return "", e
-        except OpenAIRateLimitError as e:
-            spinner.fail("Rate limit exceeded")
-            logger.error(f"Rate limit exceeded: {str(e)}")
-            return "", e
-        except OpenAIAPIError as e:
-            spinner.fail("API Error")
-            logger.error(f"OpenAI API error: {str(e)}")
-            return "", e
-        except Exception as e:
-            spinner.fail("Request failed")
-            logger.error(f"Unexpected error: {str(e)}")
-            return "", e
-        finally:
-            if spinner.spinner_id:  # Check if spinner is still running
-                spinner.stop()
+        return await OpenAICompatibleProvider.send_request(
+            model=model,
+            provider_name="OpenAI",
+            base_url=custom_base_url,
+            api_key=api_key,
+            image_data=image_data,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            require_json_output=require_json_output,
+            messages=messages,
+            stream=stream,
+            additional_params=additional_params,
+        )
 
     @staticmethod
     def custom_model(model_name: str):
@@ -530,16 +586,34 @@ class AnthropicModels:
 
                 # Add each image
                 for img in image_data:
-                    last_msg["content"].append(
-                        {
+                    if img.startswith(("http://", "https://")):
+                        # For URLs, we need to download and convert to base64
+                        try:
+                            response = requests.get(img)
+                            response.raise_for_status()
+                            image_base64 = base64.b64encode(response.content).decode('utf-8')
+                            last_msg["content"].append({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": image_base64
+                                }
+                            })
+                        except Exception as e:
+                            logger.error(f"Failed to process image URL: {str(e)}")
+                            raise
+                    else:
+                        # For base64 data, use it directly
+                        last_msg["content"].append({
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/jpeg",  # Adjust based on your needs
-                                "data": img,
-                            },
-                        }
-                    )
+                                "media_type": "image/jpeg",
+                                "data": img
+                            }
+                        })
+
             # Log request details
             logger.debug(
                 f"[LLM] Anthropic ({model}) Request: {json.dumps({'system_message': system_message, 'messages': anthropic_messages, 'temperature': temperature, 'max_tokens': max_tokens, 'stop_sequences': stop_sequences}, separators=(',', ':'))}"
@@ -693,99 +767,64 @@ class OpenrouterModels:
     Class containing methods for interacting with OpenRouter models.
     """
 
-    @staticmethod
+    @classmethod
     async def send_openrouter_request(
-        model: str = "",
+        cls,
+        model: str,
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
         messages: Optional[List[Dict[str, str]]] = None,
         stream: bool = False,
-    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
-        Sends a request to OpenRouter API asynchronously and handles retries.
+        Sends a request to OpenRouter models.
         """
-        spinner = Halo(text="Sending request to OpenRouter...", spinner="dots")
-        spinner.start()
+        # Process images if present
+        if image_data and messages:
+            last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
+            if last_user_msg:
+                content = []
+                if isinstance(image_data, str):
+                    image_data = [image_data]
 
-        try:
-            client = wrap_openai(AsyncOpenAI(
-                base_url="https://openrouter.ai/api/v1", api_key=config.OPENROUTER_API_KEY
-            ))
-            if not client.api_key:
-                raise ValueError("OpenRouter API key not found in environment variables.")
-
-            # Log request details including parameters
-            logger.debug(
-                f"[LLM] OpenRouter ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
-            )
-
-            if stream:
-                spinner.stop()  # Stop spinner before streaming
-
-                async def stream_generator():
-                    full_message = ""
-                    logger.debug("Stream started")
-                    try:
-                        response = await client.chat.completions.create(
-                            model=model,
-                            messages=messages,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            stream=True,
-                            response_format={"type": "json_object"}
-                            if require_json_output
-                            else None,
+                for image in image_data:
+                    if image.startswith(("http://", "https://")):
+                        content.append({"type": "image_url", "image_url": {"url": image}})
+                    else:
+                        content.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{image}"},
+                            }
                         )
-                        async for chunk in response:
-                            if chunk.choices[0].delta.content:
-                                content = chunk.choices[0].delta.content
-                                full_message += content
-                                yield content
-                        logger.debug("Stream complete")
-                        logger.debug(f"Full message: {full_message}")
-                        yield "\n"
-                    except Exception as e:
-                        logger.error(f"An error occurred during streaming: {e}", exc_info=True)
-                        yield "\n"
 
-                return stream_generator()
+                # Add original text content
+                content.append({"type": "text", "text": last_user_msg["content"]})
+                last_user_msg["content"] = content
 
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response = await client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format={"type": "json_object"} if require_json_output else None,
-            )
+        # Get API key
+        api_key = config.validate_api_key("OPENROUTER_API_KEY")
 
-            content = response.choices[0].message.content
-            spinner.succeed("Request completed")
+        # Handle o1 model message transformations if needed
+        additional_params = None
+        if model.endswith("o1-mini") or model.endswith("o1-preview"):
+            messages = OpenaiModels._transform_o1_messages(messages, require_json_output)
 
-            # Compress the response to single line if it's JSON
-            if require_json_output:
-                try:
-                    json_response = parse_json_response(content)
-                    compressed_content = json.dumps(json_response, separators=(",", ":"))
-                    logger.debug(f"[LLM] API Response: {compressed_content}")
-                    return compressed_content, None
-                except ValueError as e:
-                    return "", e
-
-            # For non-JSON responses, keep original formatting but make single line
-            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
-            return content.strip(), None
-
-        except Exception as e:
-            spinner.fail("Request failed")
-            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-            return "", e
-        finally:
-            if spinner.spinner_id:  # Check if spinner is still running
-                spinner.stop()
+        return await OpenAICompatibleProvider.send_request(
+            model=model,
+            provider_name="OpenRouter",
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+            image_data=image_data,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            require_json_output=require_json_output,
+            messages=messages,
+            stream=stream,
+            additional_params=additional_params,
+        )
 
     @staticmethod
     def custom_model(model_name: str):
@@ -1032,136 +1071,14 @@ class OllamaModels:
         return wrapper
 
 
-class GroqModels:
-    @staticmethod
-    async def send_groq_request(
-        model: str = "",
-        image_data: Union[List[str], str, None] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4000,
-        require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
-        stream: bool = False,
-    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
-        """
-        Sends a request to Groq using the messages API format.
-        """
-        spinner = Halo(text="Sending request to Groq...", spinner="dots")
-        spinner.start()
-
-        try:
-            api_key = config.validate_api_key("GROQ_API_KEY")
-            client = wrap_openai(OpenAI(
-                base_url="https://api.groq.com/openai/v1",
-                api_key=api_key
-            ))
-            if not client.api_key:
-                raise ValueError("Groq API key not found in environment variables.")
-
-            # Log request messages at DEBUG level
-            logger.debug(
-                f"[LLM] Groq ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
-            )
-
-            if stream:
-                spinner.stop()  # Stop spinner before streaming
-
-                async def stream_generator():
-                    full_message = ""
-                    logger.debug("Stream started")
-                    try:
-                        response = client.chat.completions.create(
-                            model=model,
-                            messages=messages,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            response_format={"type": "json_object"}
-                            if require_json_output
-                            else None,
-                            stream=True,
-                        )
-                        for chunk in response:
-                            if chunk.choices[0].delta.content:
-                                content = chunk.choices[0].delta.content
-                                full_message += content
-                                yield content
-                        logger.debug("Stream complete")
-                        logger.debug(f"Full message: {full_message}")
-                    except Exception as e:
-                        logger.error(f"An error occurred during streaming: {e}")
-                        yield ""
-
-                return stream_generator()
-
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format={"type": "json_object"} if require_json_output else None,
-            )
-
-            content = response.choices[0].message.content
-            spinner.succeed("Request completed")
-
-            # Compress the response to single line if it's JSON
-            if require_json_output:
-                try:
-                    json_response = parse_json_response(content)
-                    compressed_content = json.dumps(json_response, separators=(",", ":"))
-                    logger.debug(f"[LLM] API Response: {compressed_content}")
-                    return compressed_content, None
-                except ValueError as e:
-                    return "", e
-
-            # For non-JSON responses, keep original formatting but make single line
-            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
-            return content.strip(), None
-
-        except Exception as e:
-            spinner.fail("Request failed")
-            logger.error(f"Unexpected error: {str(e)}")
-            return "", e
-        finally:
-            if spinner.spinner_id:  # Check if spinner is still running
-                spinner.stop()
-
-    @staticmethod
-    def custom_model(model_name: str):
-        async def wrapper(
-            image_data: Union[List[str], str, None] = None,
-            temperature: float = 0.7,
-            max_tokens: int = 4000,
-            require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
-            stream: bool = False,
-        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
-            return await GroqModels.send_groq_request(
-                model=model_name,
-                image_data=image_data,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                require_json_output=require_json_output,
-                messages=messages,
-                stream=stream,
-            )
-
-        return wrapper
-
-    gemma2_9b_it = custom_model("gemma2-9b-it")
-    llama_3_3_70b_versatile = custom_model("llama-3.3-70b-versatile")
-    llama_3_1_8b_instant = custom_model("llama-3.1-8b-instant")
-    llama_guard_3_8b = custom_model("llama-guard-3-8b")
-    llama3_70b_8192 = custom_model("llama3-70b-8192")
-    llama3_8b_8192 = custom_model("llama3-8b-8192")
-    mixtral_8x7b_32768 = custom_model("mixtral-8x7b-32768")
-
-
 class TogetheraiModels:
-    @staticmethod
+    """
+    Class containing methods for interacting with Together AI models.
+    """
+
+    @classmethod
     async def send_together_request(
+        cls,
         model: str = "",
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
@@ -1173,109 +1090,46 @@ class TogetheraiModels:
         """
         Sends a request to Together AI using the messages API format.
         """
-        spinner = Halo(text="Sending request to Together AI...", spinner="dots")
-        spinner.start()
+        # Get API key
+        api_key = config.validate_api_key("TOGETHERAI_API_KEY")
 
-        try:
-            api_key = config.validate_api_key("TOGETHERAI_API_KEY")
-            client = wrap_openai(OpenAI(api_key=api_key, base_url="https://api.together.xyz/v1"))
+        # Process images if present
+        if image_data and messages:
+            last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
+            if last_user_msg:
+                content = []
+                if isinstance(image_data, str):
+                    image_data = [image_data]
 
-            # Process images if present
-            if image_data:
-                last_user_msg = next(
-                    (msg for msg in reversed(messages) if msg["role"] == "user"), None
-                )
-                if last_user_msg:
-                    content = []
-                    if isinstance(image_data, str):
-                        image_data = [image_data]
-
-                    for i, image in enumerate(image_data, start=1):
-                        content.append({"type": "text", "text": f"Image {i}:"})
-                        if image.startswith(("http://", "https://")):
-                            content.append({"type": "image_url", "image_url": {"url": image}})
-                        else:
-                            content.append({
+                for i, image in enumerate(image_data, start=1):
+                    content.append({"type": "text", "text": f"Image {i}:"})
+                    if image.startswith(("http://", "https://")):
+                        content.append({"type": "image_url", "image_url": {"url": image}})
+                    else:
+                        content.append(
+                            {
                                 "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{image}"}
-                            })
-
-                    # Add original text content
-                    content.append({"type": "text", "text": last_user_msg["content"]})
-                    last_user_msg["content"] = content
-
-            # Log request details after any message modifications
-            logger.debug(
-                f"[LLM] TogetherAI ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
-            )
-
-            if stream:
-                spinner.stop()
-
-                async def stream_generator():
-                    full_message = ""
-                    logger.debug("Stream started")
-                    try:
-                        response = client.chat.completions.create(
-                            model=model,
-                            messages=messages,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            response_format={"type": "json_object"}
-                            if require_json_output
-                            else None,
-                            stream=True,
+                                "image_url": {"url": f"data:image/jpeg;base64,{image}"},
+                            }
                         )
 
-                        for chunk in response:
-                            if chunk.choices[0].delta.content:
-                                content = chunk.choices[0].delta.content
-                                full_message += content
-                                yield content
-                        logger.debug("Stream complete")
-                        logger.debug(f"Full message: {full_message}")
-                        yield "\n"
-                    except Exception as e:
-                        logger.error(f"An error occurred during streaming: {e}")
-                        yield ""
-                        yield "\n"
+                # Add original text content
+                content.append({"type": "text", "text": last_user_msg["content"]})
+                last_user_msg["content"] = content
 
-                return stream_generator()
-
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format={"type": "json_object"} if require_json_output else None,
-            )
-
-            content = response.choices[0].message.content
-            spinner.succeed("Request completed")
-
-            # Compress the response to single line if it's JSON
-            if require_json_output:
-                try:
-                    json_response = parse_json_response(content)
-                    compressed_content = json.dumps(json_response, separators=(",", ":"))
-                    logger.debug(f"[LLM] API Response: {compressed_content}")
-                    return compressed_content, None
-                except ValueError as e:
-                    return "", e
-
-            # For non-JSON responses, keep original formatting but make single line
-            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
-            return content.strip(), None
-
-        except Exception as e:
-            spinner.fail("Request failed")
-            logger.error(f"Unexpected error: {str(e)}")
-            return "", e
-        finally:
-            if spinner.spinner_id:  # Check if spinner is still running
-                spinner.stop()
+        return await OpenAICompatibleProvider.send_request(
+            model=model,
+            provider_name="Together AI",
+            base_url="https://api.together.xyz/v1",
+            api_key=api_key,
+            image_data=image_data,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            require_json_output=require_json_output,
+            messages=messages,
+            stream=stream,
+            additional_params=None,
+        )
 
     @staticmethod
     def custom_model(model_name: str):
@@ -1299,7 +1153,77 @@ class TogetheraiModels:
 
         return wrapper
 
+    # Model-specific methods using custom_model
     meta_llama_3_1_70b_instruct_turbo = custom_model("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo")
+
+
+class GroqModels:
+    """
+    Class containing methods for interacting with Groq models.
+    """
+
+    @classmethod
+    async def send_groq_request(
+        cls,
+        model: str,
+        image_data: Union[List[str], str, None] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        require_json_output: bool = False,
+        messages: Optional[List[Dict[str, str]]] = None,
+        stream: bool = False,
+    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+        """
+        Sends a request to Groq models.
+        """
+        # Get API key
+        api_key = config.validate_api_key("GROQ_API_KEY")
+
+        return await OpenAICompatibleProvider.send_request(
+            model=model,
+            provider_name="Groq",
+            base_url="https://api.groq.com/openai/v1",
+            api_key=api_key,
+            image_data=image_data,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            require_json_output=require_json_output,
+            messages=messages,
+            stream=stream,
+            additional_params=None,
+        )
+
+    @staticmethod
+    def custom_model(model_name: str):
+        async def wrapper(
+            image_data: Union[List[str], str, None] = None,
+            temperature: float = 0.7,
+            max_tokens: int = 4000,
+            require_json_output: bool = False,
+            messages: Optional[List[Dict[str, str]]] = None,
+            stream: bool = False,
+        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+            return await GroqModels.send_groq_request(
+                model=model_name,
+                image_data=image_data,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                require_json_output=require_json_output,
+                messages=messages,
+                stream=stream,
+            )
+
+        return wrapper
+
+    # Model-specific methods using custom_model
+    gemma2_9b_it = custom_model("gemma2-9b-it")
+    llama_3_3_70b_versatile = custom_model("llama-3.3-70b-versatile")
+    llama_3_1_8b_instant = custom_model("llama-3.1-8b-instant")
+    llama_guard_3_8b = custom_model("llama-guard-3-8b")
+    llama3_70b_8192 = custom_model("llama3-70b-8192")
+    llama3_8b_8192 = custom_model("llama3-8b-8192")
+    mixtral_8x7b_32768 = custom_model("mixtral-8x7b-32768")
+    llama_3_2_vision = custom_model("llama-3.2-11b-vision-preview")
 
 
 class GeminiModels:
@@ -1320,12 +1244,34 @@ class GeminiModels:
         """
         Sends a request to Gemini using the chat format.
         """
-        # Create spinner only once at the start
         spinner = Halo(text=f"Sending request to Gemini ({model})...", spinner="dots")
 
         try:
             # Start spinner
             spinner.start()
+
+            # Process image data if present
+            if image_data:
+                if isinstance(image_data, str):
+                    image_data = [image_data]
+
+                processed_images = []
+                for img in image_data:
+                    if img.startswith(("http://", "https://")):
+                        # Download image from URL
+                        response = requests.get(img)
+                        response.raise_for_status()
+                        img_data = response.content
+                        processed_images.append({"mime_type": "image/jpeg", "data": img_data})
+                    else:
+                        # Assume it's base64, decode it
+                        if img.startswith("data:"):
+                            # Strip data URL prefix if present
+                            img = img.split(",", 1)[1]
+                        img_bytes = base64.b64decode(img)
+                        processed_images.append({"mime_type": "image/jpeg", "data": img_bytes})
+
+                image_data = processed_images
 
             # Configure API and model
             api_key = config.validate_api_key("GEMINI_API_KEY")
@@ -1381,12 +1327,10 @@ class GeminiModels:
                         if role == "user":
                             if image_data and msg == messages[-1]:
                                 parts = []
-                                if isinstance(image_data, str):
-                                    image_data = [image_data]
                                 for img in image_data:
-                                    parts.append({"mime_type": "image/jpeg", "data": img})
-                                    parts.append(content)
-                                    response = chat.send_message(parts)
+                                    parts.append(img)  # Now using processed image data
+                                parts.append(content)
+                                response = chat.send_message(parts)
                             else:
                                 response = chat.send_message(content)
                         elif role == "assistant":
@@ -1470,17 +1414,7 @@ class DeepseekModels:
         messages: List[Dict[str, str]], require_json_output: bool = False
     ) -> List[Dict[str, str]]:
         """
-        Preprocess messages specifically for the DeepSeek Reasoner model:
-        - Combine successive user messages
-        - Combine successive assistant messages
-        - Handle JSON output requirements
-
-        Args:
-            messages (List[Dict[str, str]]): Original messages array
-            require_json_output (bool): Whether JSON output was requested
-
-        Returns:
-            List[Dict[str, str]]: Processed messages array
+        Transform messages specifically for the DeepSeek Reasoner model.
         """
         if require_json_output:
             logger.warning(
@@ -1511,9 +1445,10 @@ class DeepseekModels:
 
         return processed
 
-    @staticmethod
+    @classmethod
     async def send_deepseek_request(
-        model: str = "",
+        cls,
+        model: str,
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
         max_tokens: int = 4000,
@@ -1522,147 +1457,31 @@ class DeepseekModels:
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
-        Sends a request to DeepSeek models asynchronously.
-        For the Reasoner model, returns both reasoning and answer as a tuple
+        Sends a request to DeepSeek models.
         """
-        spinner = Halo(text="Sending request to DeepSeek...", spinner="dots")
-        spinner.start()
+        # Get API key
+        api_key = config.validate_api_key("DEEPSEEK_API_KEY")
 
-        try:
-            # Validate and retrieve the DeepSeek API key
-            api_key = config.validate_api_key("DEEPSEEK_API_KEY")
-            if not api_key:
-                raise ValueError("DeepSeek API key not found in environment variables.")
+        # Apply model-specific transformations
+        additional_params = None
+        if model == "deepseek-reasoner":
+            messages = cls._preprocess_reasoner_messages(messages, require_json_output)
+            # Disable JSON output for reasoner model
+            require_json_output = False
 
-            # Create an AsyncOpenAI client
-            client = wrap_openai(AsyncOpenAI(
-                api_key=api_key,
-                base_url="https://api.deepseek.com/v1",
-            ))
-
-            # Warn if image data was provided
-            if image_data:
-                logger.warning(
-                    "Warning: DeepSeek API does not support image inputs. Images will be ignored."
-                )
-
-            # Preprocess messages only for the reasoner model
-            if messages and model == "deepseek-reasoner":
-                messages = DeepseekModels._preprocess_reasoner_messages(
-                    messages, require_json_output
-                )
-                # Remove JSON requirement for reasoner model
-                require_json_output = False
-            # Log request details
-            logger.debug(
-                f"[LLM] DeepSeek ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
-            )
-
-            request_params = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            }
-
-            # Add JSON output format if required (now only for non-reasoner models)
-            if require_json_output:
-                request_params["response_format"] = {"type": "json_object"}
-                if messages and messages[-1]["role"] == "user":
-                    messages[-1]["content"] += "\nPlease ensure the response is valid JSON."
-
-            if stream:
-                spinner.stop()  # Stop spinner before streaming
-
-                async def stream_generator():
-                    if model == "deepseek-reasoner":
-                        full_reasoning = ""
-                        full_answer = ""
-                        in_reasoning = False
-                        logger.debug("Stream started")
-                        try:
-                            response = await client.chat.completions.create(
-                                stream=True, **request_params
-                            )
-                            async for chunk in response:
-                                if chunk.choices[0].delta.reasoning_content:
-                                    if not in_reasoning:
-                                        in_reasoning = True
-                                    content = chunk.choices[0].delta.reasoning_content
-                                    full_reasoning += content
-                                    yield content
-                                elif chunk.choices[0].delta.content:
-                                    if in_reasoning:
-                                        in_reasoning = False
-                                    content = chunk.choices[0].delta.content
-                                    full_answer += content
-                                    yield content
-                            logger.debug(
-                                f"Stream complete: reasoning: {full_reasoning}, answer: {full_answer}"
-                            )
-                        except Exception as e:
-                            logger.error(f"An error occurred during streaming: {e}")
-                            yield ""
-                    else:
-                        full_message = ""
-                        logger.debug("Stream started")
-                        try:
-                            response = await client.chat.completions.create(
-                                stream=True, **request_params
-                            )
-                            async for chunk in response:
-                                if chunk.choices[0].delta.content:
-                                    content = chunk.choices[0].delta.content
-                                    full_message += content
-                                    yield content
-                            logger.debug("Stream complete")
-                            logger.debug(f"Full message: {full_message}")
-                        except Exception as e:
-                            logger.error(f"An error occurred during streaming: {e}")
-                            yield ""
-
-                return stream_generator()
-
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response = await client.chat.completions.create(**request_params)
-
-            if model == "deepseek-reasoner":
-                reasoning = response.choices[0].message.reasoning_content
-                content = response.choices[0].message.content
-                # Instead of returning a formatted string, compress the output inline
-                spinner.succeed("Request completed")
-                compressed_reasoning = " ".join(reasoning.strip().split())
-                compressed_answer = " ".join(content.strip().split())
-                logger.debug(f"[LLM] API Response (Reasoning): {compressed_reasoning}")
-                logger.debug(f"[LLM] API Response (Answer): {compressed_answer}")
-
-                return (
-                    compressed_reasoning,
-                    compressed_answer,
-                ), None  # Return tuple of (reasoning, answer)
-            else:
-                content = response.choices[0].message.content
-                spinner.succeed("Request completed")
-                compressed_content = " ".join(content.strip().split())
-                logger.debug(f"[LLM] API Response: {compressed_content}")
-
-                if require_json_output:
-                    try:
-                        return json.dumps(parse_json_response(content)), None
-                    except ValueError as e:
-                        logger.error(f"Failed to parse response as JSON: {e}")
-                        return "", e
-
-                return compressed_content, None
-
-        except Exception as e:
-            spinner.fail("Request failed")
-            logger.error(f"Unexpected error: {str(e)}")
-            return "", e
-        finally:
-            if spinner.spinner_id:  # Check if spinner is still running
-                spinner.stop()
+        return await OpenAICompatibleProvider.send_request(
+            model=model,
+            provider_name="DeepSeek",
+            base_url="https://api.deepseek.com/v1",
+            api_key=api_key,
+            image_data=image_data,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            require_json_output=require_json_output,
+            messages=messages,
+            stream=stream,
+            additional_params=additional_params,
+        )
 
     @staticmethod
     def custom_model(model_name: str):
@@ -1686,7 +1505,7 @@ class DeepseekModels:
 
         return wrapper
 
-    # Model-specific methods using custom_model
+    # Model-specific methods
     chat = custom_model("deepseek-chat")
     reasoner = custom_model("deepseek-reasoner")
 
@@ -1760,6 +1579,8 @@ class HuggingFaceModels:
                         for chunk in response:
                             if chunk.token.text:
                                 content = chunk.token.text
+                                # Clean the content of unwanted tags for each chunk
+                                content = HuggingFaceModels._clean_response_tags(content)
                                 full_message += content
                                 yield content
 
@@ -1784,7 +1605,8 @@ class HuggingFaceModels:
 
             response = client.text_generation(prompt, **parameters)
 
-            content = response
+            # Clean the response of unwanted tags
+            content = HuggingFaceModels._clean_response_tags(response)
             spinner.succeed("Request completed")
 
             # Handle JSON output if required
@@ -1817,6 +1639,35 @@ class HuggingFaceModels:
         finally:
             if spinner.spinner_id:
                 spinner.stop()
+
+    @staticmethod
+    def _clean_response_tags(text: str) -> str:
+        """
+        Clean HuggingFace model responses by removing unwanted tags.
+
+        Args:
+            text: The text response from the model
+
+        Returns:
+            Cleaned text with unwanted tags removed
+        """
+        if not text:
+            return text
+
+        # Remove common tag patterns that appear in HuggingFace model responses
+        # This handles tags like <||, <|assistant|>, etc.
+        cleaned = re.sub(r'<\|[^>]*\|>', '', text)
+
+        # Handle incomplete tags at the beginning or end
+        cleaned = re.sub(r'^<\|.*?(?=\w)', '', cleaned)  # Beginning of text
+        cleaned = re.sub(r'(?<=\w).*?\|>$', '', cleaned)  # End of text
+
+        # Handle other special cases
+        cleaned = re.sub(r'<\|\|', '', cleaned)
+        cleaned = re.sub(r'<\|', '', cleaned)
+        cleaned = re.sub(r'\|>', '', cleaned)
+
+        return cleaned.strip()
 
     @staticmethod
     def custom_model(model_name: str):

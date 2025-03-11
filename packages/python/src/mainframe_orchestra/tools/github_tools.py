@@ -21,10 +21,10 @@ class GitHubTools:
         """
         owner = os.getenv('GITHUB_OWNER')
         repo = os.getenv('GITHUB_REPO')
-        
+
         if not owner or not repo:
             raise ValueError("GITHUB_OWNER and GITHUB_REPO environment variables must be set")
-            
+
         GitHubTools._owner = owner
         GitHubTools._repo = repo
 
@@ -33,7 +33,7 @@ class GitHubTools:
     def _get_headers(auth_required: bool = False):
         """
         Get headers with or without token.
-        
+
         Args:
             auth_required (bool): If True, will raise error when token is missing.
                                 Use for operations that always need authentication.
@@ -225,7 +225,7 @@ class GitHubTools:
 
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
-        
+
         # Add repo scope if provided
         if owner and repo:
             query = f"{query} repo:{owner}/{repo}"
@@ -237,11 +237,11 @@ class GitHubTools:
             "q": query,
             "per_page": min(max_results, 100)
         }
-        
+
         response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
         data = response.json()
-        
+
         return {
             "total_count": data["total_count"],
             "incomplete_results": data["incomplete_results"],
@@ -264,7 +264,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure()    
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls"
@@ -315,7 +315,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls/{pull_number}"
@@ -340,7 +340,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls/{pull_number}/commits"
@@ -378,7 +378,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls/{pull_number}/files"
@@ -416,7 +416,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         contents = GitHubTools.get_repo_contents(path)
         structure = {}
         for item in contents:
@@ -443,7 +443,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/contents/{path}"
@@ -480,7 +480,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure()   
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/contents/{path}"
@@ -512,7 +512,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
 
@@ -563,7 +563,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers(auth_required=True)
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/issues/{issue_number}/comments"
@@ -589,7 +589,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails.
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/issues"
@@ -637,7 +637,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         headers = GitHubTools._get_headers(auth_required=True)
 
         # Construct URL for the comparison
@@ -714,7 +714,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         headers = GitHubTools._get_headers(auth_required=True)
         base_url = "https://api.github.com"
 
@@ -741,7 +741,7 @@ class GitHubTools:
         response = requests.put(url, headers=headers, json=data)
         response.raise_for_status()
         return response.json()
-    
+
     @traced(type="tool")
     @staticmethod
     def get_default_branch() -> str:
@@ -755,7 +755,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}"
@@ -780,7 +780,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         # Get the default branch's SHA
         default_branch = GitHubTools.get_default_branch()
         base_url = "https://api.github.com"
@@ -822,7 +822,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers(auth_required=True)
 
@@ -869,7 +869,7 @@ class GitHubTools:
             ValueError: If owner and repo are not configured
             requests.exceptions.HTTPError: If the API request fails
         """
-        GitHubTools.configure() 
+        GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers(auth_required=True)
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls"

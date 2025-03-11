@@ -36,7 +36,7 @@ class FredTools:
         """
         Fred = check_fredapi()
         fred = Fred(api_key=os.getenv('FRED_API_KEY'))
-        
+
         results = {}
 
         for indicator_id in indicator_ids:
@@ -86,7 +86,7 @@ class FredTools:
         pd = check_pandas()
         Fred = check_fredapi()
         fred = Fred(api_key=os.getenv('FRED_API_KEY'))
-        
+
         yield_data = {}
 
         for maturity in treasury_maturities:
@@ -134,7 +134,7 @@ class FredTools:
         """
         Fred = check_fredapi()
         fred = Fred(api_key=os.getenv('FRED_API_KEY'))
-        
+
         series = fred.get_series(news_series_id, observation_start=start_date, observation_end=end_date)
         series = series.dropna()
 

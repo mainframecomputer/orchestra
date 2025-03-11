@@ -41,7 +41,7 @@ class FileTools:
         except Exception as e:
             print(f"An unexpected error occurred at FileTools.save_code_to_file: {e}")
             print(f"Unexpected error at FileTools.save_code_to_file: {str(e)}")
-    
+
     @traced(type="tool")
     @staticmethod
     def generate_directory_tree(base_path, additional_ignore=None):
@@ -64,7 +64,7 @@ class FileTools:
             OSError: If there's an error accessing the directory or its contents.
         """
         default_ignore_list = {".DS_Store", ".gitignore", ".env", "node_modules", "__pycache__"}
-        
+
         if additional_ignore:
             ignore_list = default_ignore_list.union(set(additional_ignore))
         else:
@@ -72,7 +72,7 @@ class FileTools:
 
         #print(f"Starting file structure generation for path: {base_path}")
         #print(f"Ignore list: {ignore_list}")
-        
+
         try:
             # Convert both paths to absolute and normalize them
             abs_base_path = os.path.abspath(os.path.normpath(base_path))
@@ -81,13 +81,13 @@ class FileTools:
             # Check if the base_path is within or equal to the current working directory
             if not abs_base_path.startswith(abs_cwd):
                 raise ValueError(f"Access to the specified path is not allowed: {abs_base_path}")
-            
+
             if not os.path.exists(abs_base_path):
                 raise FileNotFoundError(f"The specified path does not exist: {abs_base_path}")
-            
+
             if not os.path.isdir(abs_base_path):
                 raise NotADirectoryError(f"The specified path is not a directory: {abs_base_path}")
-            
+
             file_structure = {
                 "name": os.path.basename(abs_base_path),
                 "type": "directory",
@@ -98,10 +98,10 @@ class FileTools:
                 if item in ignore_list or item.startswith('.'):
                     print(f"Skipping ignored or hidden item: {item}")
                     continue  # Skip ignored and hidden files/directories
-                
+
                 item_path = os.path.join(abs_base_path, item)
                 print(f"Processing item: {item_path}")
-                
+
                 if os.path.isdir(item_path):
                     try:
                         file_structure["children"].append(FileTools.generate_directory_tree(item_path))
@@ -132,7 +132,7 @@ class FileTools:
                     except Exception as e:
                         print(f"Unexpected error reading file: {item_path}, Error: {str(e)}")
                         file_contents = f"Unexpected error: {str(e)}"
-                    
+
                     file_structure["children"].append({
                         "name": item,
                         "type": "file",
@@ -156,7 +156,7 @@ class FileTools:
             raise
         except Exception as e:
             print(f"Unexpected error in generate_directory_tree: {str(e)}")
-            raise  
+            raise
 
     @traced(type="tool")
     @staticmethod
@@ -174,7 +174,7 @@ class FileTools:
             IOError: If there's an error reading the file.
         """
         print(f"Attempting to read file contents from: {full_file_path}")
-        
+
         try:
             with open(full_file_path, 'r', encoding='utf-8') as file:
                 file_contents = file.read()
@@ -331,11 +331,11 @@ class FileTools:
         try:
             with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile)
-                
+
                 # Check if the search_column exists
                 if search_column not in reader.fieldnames:
                     raise KeyError(f"Column '{search_column}' not found in the CSV file.")
-                
+
                 # Search for matching rows
                 return [row for row in reader if row[search_column] == str(search_value)]
         except FileNotFoundError:
@@ -416,7 +416,7 @@ class FileTools:
     def write_markdown(file_path: str, content: str) -> str:
         """
         Write content to a markdown file.
-        
+
         Args:
             file_path (str): The path to the file to write to.
             content (str): The content to write to the file.
@@ -430,11 +430,11 @@ class FileTools:
 
         with open(file_path, 'w') as file:
             file.write(content)
-        
+
         # Get the absolute path
         abs_path = os.path.abspath(file_path)
         return f"Markdown file written to {abs_path}"
-    
+
     @traced(type="tool")
     @staticmethod
     def write_csv(file_path: str, data: List[List[str]], delimiter: str = ',') -> Union[bool, str]:
@@ -477,7 +477,7 @@ class FileTools:
                 error_msg = "Error: Input data is empty."
                 print(error_msg)
                 return error_msg
-            
+
             num_columns = len(data[0])
             if column_index < 0 or column_index >= num_columns:
                 error_msg = f"Error: Invalid column index. Must be between 0 and {num_columns - 1}."
@@ -514,7 +514,7 @@ class FileTools:
                 error_msg = "Error: Input data is empty."
                 print(error_msg)
                 return error_msg
-            
+
             num_columns = len(data[0])
             if column_index < 0 or column_index >= num_columns:
                 error_msg = f"Error: Invalid column index. Must be between 0 and {num_columns - 1}."

@@ -50,7 +50,7 @@ class TextToSpeechTools:
             raise ImportError(f"{e.name} is required for text_to_speech. Install with `pip install {e.name}`")
 
         api_key = os.getenv('ELEVENLABS_API_KEY')
-        
+
         if not api_key:
             raise ValueError("ELEVENLABS_API_KEY not found in environment variables")
 
@@ -111,10 +111,10 @@ class TextToSpeechTools:
             audio_data = b''.join(chunk for chunk in response.iter_bytes())
             audio_file = io.BytesIO(audio_data)
             pygame.mixer.music.load(audio_file)
-                    
+
             # Add a small delay before playing
             time.sleep(1)
-            
+
             pygame.mixer.music.play()
             while pygame.mixer.music.get_busy():
                 time.sleep(0.1)
@@ -148,7 +148,7 @@ class WhisperTools:
             Union[Dict, List[Dict]]: Transcription result(s) in the specified format.
         """
         api_key = os.getenv("OPENAI_API_KEY")
-        
+
         if not api_key:
             raise ValueError("OPENAI_API_KEY must be set in .env file")
 
@@ -172,7 +172,7 @@ class WhisperTools:
 
                 response = requests.post(url, headers=headers, files=files, data=data)
                 response.raise_for_status()
-                
+
                 if response_format == 'json' or response_format == 'verbose_json':
                     return response.json()
                 else:
@@ -211,7 +211,7 @@ class WhisperTools:
         """
         load_dotenv()
         api_key = os.getenv("OPENAI_API_KEY")
-        
+
         if not api_key:
             raise ValueError("OPENAI_API_KEY must be set in .env file")
 
@@ -233,7 +233,7 @@ class WhisperTools:
 
                 response = requests.post(url, headers=headers, files=files, data=data)
                 response.raise_for_status()
-                
+
                 if response_format == 'json' or response_format == 'verbose_json':
                     return response.json()
                 else:

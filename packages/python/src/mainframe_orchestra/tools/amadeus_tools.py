@@ -14,17 +14,17 @@ class AmadeusTools:
         load_dotenv()
         api_key = os.getenv("AMADEUS_API_KEY")
         api_secret = os.getenv("AMADEUS_API_SECRET")
-        
+
         if not api_key or not api_secret:
             raise ValueError("AMADEUS_API_KEY and AMADEUS_API_SECRET must be set in .env file")
-        
+
         token_url = "https://test.api.amadeus.com/v1/security/oauth2/token"
         data = {
             "grant_type": "client_credentials",
             "client_id": api_key,
             "client_secret": api_secret
         }
-        
+
         response = requests.post(token_url, data=data)
         response.raise_for_status()
         return response.json()["access_token"]
@@ -66,14 +66,14 @@ class AmadeusTools:
             Dict[str, Any]: Flight search results
         """
         access_token = AmadeusTools._get_access_token()
-        
+
         url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
-        
+
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        
+
         params = {
             "originLocationCode": origin,
             "destinationLocationCode": destination,
@@ -84,19 +84,19 @@ class AmadeusTools:
             "currencyCode": currency,
             "max": max_results
         }
-        
+
         if return_date:
             params["returnDate"] = return_date
-        
+
         if travel_class:
             params["travelClass"] = travel_class
-        
+
         if non_stop:
             params["nonStop"] = "true"
-        
+
         if max_price:
             params["maxPrice"] = max_price
-        
+
         try:
             response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
@@ -124,7 +124,7 @@ class AmadeusTools:
         Args:
             origin (str): IATA code of the origin airport.
             destination (str): IATA code of the destination airport.
-            departure_date (Union[str, Tuple[str, str]]): Departure date in YYYY-MM-DD format or a tuple of (start_date, end_date). 
+            departure_date (Union[str, Tuple[str, str]]): Departure date in YYYY-MM-DD format or a tuple of (start_date, end_date).
             return_date (Optional[Union[str, Tuple[str, str]]]): Return date in YYYY-MM-DD format or a tuple of (start_date, end_date) for round trips. Defaults to None.
             adults (int): Number of adult travelers. Defaults to 1.
 
@@ -136,14 +136,14 @@ class AmadeusTools:
             ValueError: If the date range is more than 7 days.
         """
         access_token = AmadeusTools._get_access_token()
-        
+
         url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
-        
+
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        
+
         def date_range(start_date: str, end_date: str):
             start = datetime.fromisoformat(start_date)
             end = datetime.fromisoformat(end_date)
@@ -175,7 +175,7 @@ class AmadeusTools:
 
                 response = requests.get(url, headers=headers, params=params)
                 response.raise_for_status()
-                
+
                 data = response.json()
                 if data.get('data'):
                     offer = data['data'][0]
@@ -193,10 +193,10 @@ class AmadeusTools:
             "airline": cheapest_offer['validatingAirlineCodes'][0],
             "details": cheapest_offer
         }
-        
+
         if return_date:
             result["returnDate"] = cheapest_offer['itineraries'][-1]['segments'][0]['departure']['at']
-        
+
         return result
 
     @traced(type="tool")
@@ -235,22 +235,22 @@ class AmadeusTools:
             This method requires valid Amadeus API credentials to be set in the environment variables.
         """
         access_token = AmadeusTools._get_access_token()
-        
+
         url = "https://test.api.amadeus.com/v1/shopping/flight-destinations"
-        
+
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        
+
         params = {
             "origin": origin,
             "currency": currency
         }
-        
+
         if max_price:
             params["maxPrice"] = max_price
-        
+
         response = requests.get(url, headers=headers, params=params)
         try:
             response.raise_for_status()

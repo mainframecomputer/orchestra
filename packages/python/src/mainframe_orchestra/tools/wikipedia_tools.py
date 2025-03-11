@@ -122,7 +122,7 @@ class WikipediaTools:
                 detailed_response.raise_for_status()
                 detailed_data = detailed_response.json()
                 page_data = detailed_data["query"]["pages"][str(page_id)]
-                
+
                 detailed_result = {
                     "title": page_data.get("title"),
                     "fullurl": page_data.get("fullurl"),
@@ -144,7 +144,7 @@ class WikipediaTools:
         """
         Retrieve the main image for a given Wikipedia article title.
 
-        This method queries the Wikipedia API to fetch the main image (thumbnail) 
+        This method queries the Wikipedia API to fetch the main image (thumbnail)
         associated with the specified article title.
 
         Args:
