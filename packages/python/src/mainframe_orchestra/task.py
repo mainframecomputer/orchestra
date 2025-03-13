@@ -449,10 +449,13 @@ class Task(BaseModel):
         llm_params = {
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "image_data": self.image_data,
             "require_json_output": self.require_json_output,
             "stream": self.stream,
         }
+
+        # Only add image_data if it exists
+        if self.image_data:
+            llm_params["image_data"] = self.image_data
 
         # Convert single LLM to list for unified handling
         llms = [self.llm] if callable(self.llm) else list(self.llm)
