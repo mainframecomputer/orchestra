@@ -4728,4 +4728,4 @@ yahoo-finance-tools = ["yahoofinance", "yfinance"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "87d1b425c0a416e2713957ad9363332567c2aac3c5be087f8322b7941f481316"
+content-hash = "9f12a1b2055a57ee14c067ec83e8dfda4ff5a37fdf3e08830712a87501df7bb8"
