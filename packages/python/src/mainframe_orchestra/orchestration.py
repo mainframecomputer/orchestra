@@ -8,7 +8,7 @@ from multiprocessing import Queue
 from pydantic import BaseModel
 from .task import Task
 from .agent import Agent
-
+from .utils.logging_config import logger
 
 class TaskInstruction(BaseModel):
     task_id: str
@@ -30,7 +30,7 @@ class Conduct:
             }
 
             # Format available agents string with their tools
-            available_agents = "\n            ".join(
+            available_agents = "No agents have been installed yet. Notify the user to install or add some agents first." if not agents else "\n            ".join(
                 f"- {agent_id}\n    ({agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])})"
                 for agent_id in sorted(agent_map.keys())
             )
@@ -38,7 +38,7 @@ class Conduct:
             async def conduct_tool(
                 tasks: List, event_queue: Optional[Queue] = None, **kwargs
             ) -> Any:
-                print(f"[DELEGATION] Starting conduct delegation with {len(tasks)} tasks")
+                logger.debug(f"Starting conduct delegation with {len(tasks)} tasks")
 
                 # Add max iteration limits
                 MAX_AGENT_ITERATIONS = 3  # Maximum times an agent can attempt to complete a task
@@ -77,22 +77,26 @@ class Conduct:
                     # Convert dict to TaskInstruction model
                     task = TaskInstruction.model_validate(instruction_item)
 
+                    # Add progress logging
+                    current_task_index = tasks.index(instruction_item) + 1
+                    logger.info(f"Processing task {current_task_index} of {len(tasks)}: '{task.task_id}' with agent '{task.agent_id}'")
+
                     target_agent = agent_map.get(task.agent_id)
-                    print(
-                        f"[DELEGATION] Processing task '{task.task_id}' with agent '{task.agent_id}'"
+                    logger.debug(
+                        f"Processing task '{task.task_id}' with agent '{task.agent_id}'"
                     )
 
                     if not target_agent:
-                        print(
-                            f"[DELEGATION] Warning: Agent {task.agent_id} not found. Available agents: {list(agent_map.keys())}"
+                        logger.warning(
+                            f"Warning: Agent {task.agent_id} not found. Available agents: {list(agent_map.keys())}"
                         )
                         continue
 
                     # Track agent iterations
                     agent_call_counts[task.agent_id] = agent_call_counts.get(task.agent_id, 0) + 1
                     if agent_call_counts[task.agent_id] > MAX_AGENT_ITERATIONS:
-                        print(
-                            f"[DELEGATION] Warning: Agent {task.agent_id} exceeded maximum iterations"
+                        logger.warning(
+                            f"Warning: Agent {task.agent_id} exceeded maximum iterations"
                         )
                         continue
 
@@ -108,7 +112,7 @@ class Conduct:
                         }
                     ]
 
-                    print(f"\n[DELEGATION] Starting task for agent: {task.agent_id}")
+                    logger.debug(f"\nStarting task for agent: {task.agent_id}")
                     instruction_text = task.instruction + (
                         "\n\nUse the following information from previous tasks:\n\n"
                         + "\n\n".join(
@@ -121,7 +125,7 @@ class Conduct:
                     )
 
                     async def nested_callback(result):
-                        if isinstance(result, dict) and result.get("tool"):
+                        if isinstance(result, dict) and (result.get("tool") or result.get("type") == "delegation_result"):
                             current_time = datetime.now().isoformat()
 
                             # Ensure any existing timestamp is serializable
@@ -129,12 +133,11 @@ class Conduct:
                                 result["timestamp"] = result["timestamp"].isoformat()
 
                             # Standardize message format for all delegation-related events
-                            if result.get("type") in ["delegation_result", "final_response"]:
+                            if result.get("type") == "delegation_result":
                                 message = {
                                     "type": "delegation_result",
-                                    "role": "delegation",
-                                    "name": target_agent.agent_id,
                                     "content": result.get("content", ""),
+                                    "agent_id": target_agent.agent_id,
                                     "conducted_task_id": task.task_id,
                                     "timestamp": current_time,
                                 }
@@ -177,13 +180,12 @@ class Conduct:
                                 msg_signature += (
                                     f":{result.get('tool')}:{json.dumps(result.get('params', {}))}"
                                 )
-                                # print(f"[DELEGATION DEBUG] Tool call: {result.get('tool')}")
+
                             elif result.get("type") == "tool_result":
                                 msg_signature += f":{result.get('tool')}"
-                                # print(f"[DELEGATION DEBUG] Tool result received")
+
                             elif result.get("type") == "delegation_result":
                                 msg_signature += f":delegation:{result.get('conducted_task_id')}"
-                                # print(f"[DELEGATION DEBUG] Conductor result received for task: {result.get('conducted_task_id')}")
 
                             # Send to event queue if available
                             if event_queue:
@@ -199,6 +201,15 @@ class Conduct:
                         tool_summaries=tool_summaries,
                     )
 
+                    # Generate a delegation result event after task completion
+                    delegation_result = {
+                        "type": "delegation_result",
+                        "content": task_result,
+                        "agent_id": target_agent.agent_id,
+                        "conducted_task_id": task.task_id
+                    }
+                    await nested_callback(delegation_result)
+
                     # Include context in the result
                     context = "\n\n".join(
                         f"Results from task '{dep_id}':\n{all_results[dep_id]}"
@@ -209,13 +220,16 @@ class Conduct:
                         f"{context}\n\n{task_result}" if context else task_result
                     )
 
-                # Return the final combined results
-                return "\n\n".join(
-                    f"Task '{task_id}':\n"
-                    f"Instruction: {next((item['instruction'] for item in tasks if item['task_id'] == task_id), '')}\n"
-                    f"Result: {result}"
+                # Return results as JSON structure
+                return json.dumps([
+                    {
+                        "task_id": task_id,
+                        "agent": next((item['agent_id'] for item in tasks if item['task_id'] == task_id), ''),
+                        "instruction": next((item['instruction'] for item in tasks if item['task_id'] == task_id), ''),
+                        "result": result
+                    }
                     for task_id, result in all_results.items()
-                )
+                ])
 
             conduct_tool.__name__ = "conduct_tool"
             conduct_tool.__doc__ = f"""Tool function to orchestrate multiple agents in a single, coordinated multi-agent flow. Tasks should be submitted in a single list, and they will be executed in the order they are submitted. Do not make separate calls to the tool.
@@ -275,7 +289,6 @@ class Compose:
             async def composition_tool(
                 goal: str, event_queue: Optional[Queue] = None, **kwargs
             ) -> Any:
-                # KEEP: Create composer agent instance with all these fields
                 composer_agent = Agent(
                     agent_id="composer",
                     role="Composer",
@@ -287,7 +300,7 @@ Your responses take the form of well-structured plans that read like a score, gu
                     llm=next(iter(agents)).llm,
                 )
 
-                # KEEP: Initialize messages array with BOTH system and user messages
+                # Initialize messages array with both system and user messages
                 messages = [
                     {
                         "role": "system",
@@ -312,7 +325,6 @@ Your plan should outline:
                 ]
 
                 try:
-                    # KEEP: All these parameters to Task.create()
                     task_result = await Task.create(
                         agent=composer_agent,
                         instruction=f"Create a detailed plan for achieving this goal: {goal}",
@@ -322,7 +334,7 @@ Your plan should outline:
                     )
                     return task_result
                 except Exception as e:
-                    print(f"[COMPOSITION ERROR] Failed to create task: {str(e)}")
+                    logger.error(f"[COMPOSITION ERROR] Failed to create task: {str(e)}")
                     raise
 
             composition_tool.__name__ = "composition_flow"
