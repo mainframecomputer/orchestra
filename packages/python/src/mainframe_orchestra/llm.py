@@ -56,6 +56,7 @@ from openai import (
 )
 
 from .utils.braintrust_utils import wrap_openai
+from .utils.parse_json_response import parse_json_response
 
 # Import the configured logger
 from .utils.logging_config import logger
@@ -125,45 +126,6 @@ def set_verbosity(value: Union[str, bool, int]):
             logger.setLevel(logging.WARNING)
 
 
-def parse_json_response(response: str) -> dict:
-    """
-    Parse a JSON response, handling potential formatting issues.
-
-    Args:
-        response (str): The JSON response string to parse.
-
-    Returns:
-        dict: The parsed JSON data.
-
-    Raises:
-        ValueError: If the JSON cannot be parsed after multiple attempts.
-    """
-    # First attempt: Try to parse the entire response
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        # Second attempt: Find the first complete JSON object
-        json_pattern = r"(\{(?:[^{}]|(?:\{[^{}]*\}))*\})"
-        json_matches = re.finditer(json_pattern, response, re.DOTALL)
-
-        for match in json_matches:
-            try:
-                result = json.loads(match.group(1))
-                # Validate it's a dict and has expected structure
-                if isinstance(result, dict):
-                    return result
-            except json.JSONDecodeError:
-                continue
-
-        # Third attempt: Try to cleave strings before and after JSON
-        cleaved_json = response.strip().lstrip("`").rstrip("`")
-        try:
-            return json.loads(cleaved_json)
-        except json.JSONDecodeError as e:
-            logger.warning(f"All JSON parsing attempts failed: {e}")
-            raise ValueError(f"Invalid JSON structure: {e}")
-
-
 class OpenAICompatibleProvider:
     """
     Base class for handling OpenAI-compatible API providers.
@@ -171,7 +133,9 @@ class OpenAICompatibleProvider:
     """
 
     @staticmethod
-    async def _prepare_image_data(image_data: Union[str, List[str]], provider_name: str) -> Union[str, List[str]]:
+    async def _prepare_image_data(
+        image_data: Union[str, List[str]], provider_name: str
+    ) -> Union[str, List[str]]:
         """Prepare image data according to provider requirements"""
         if not image_data:
             return image_data
@@ -184,7 +148,7 @@ class OpenAICompatibleProvider:
                 # Download and convert URL to base64
                 response = requests.get(img)
                 response.raise_for_status()
-                base64_data = base64.b64encode(response.content).decode('utf-8')
+                base64_data = base64.b64encode(response.content).decode("utf-8")
 
                 if provider_name in ["OpenAI", "Gemini"]:
                     # These providers need data URL format
@@ -220,7 +184,9 @@ class OpenAICompatibleProvider:
         try:
             # Process image data if present
             if image_data:
-                image_data = await OpenAICompatibleProvider._prepare_image_data(image_data, provider_name)
+                image_data = await OpenAICompatibleProvider._prepare_image_data(
+                    image_data, provider_name
+                )
 
             spinner = Halo(text=f"Sending request to {provider_name}...", spinner="dots")
             spinner.start()
@@ -563,6 +529,17 @@ class AnthropicModels:
                             {"role": "user", "content": f"Function result: {content}"}
                         )
 
+            # If JSON output is required, add instruction to the system message
+            if require_json_output:
+                json_instruction = "Do not comment before or after the JSON, or provide backticks or language declarations, return only the JSON object."
+
+                # If we have a system message, append the instruction
+                if system_message is not None:
+                    system_message += f"\n\n{json_instruction}"
+                else:
+                    # If no system message exists, create one
+                    system_message = json_instruction
+
             # Handle image data if present
             if image_data:
                 if isinstance(image_data, str):
@@ -591,28 +568,32 @@ class AnthropicModels:
                         try:
                             response = requests.get(img)
                             response.raise_for_status()
-                            image_base64 = base64.b64encode(response.content).decode('utf-8')
-                            last_msg["content"].append({
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": image_base64
+                            image_base64 = base64.b64encode(response.content).decode("utf-8")
+                            last_msg["content"].append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "image/jpeg",
+                                        "data": image_base64,
+                                    },
                                 }
-                            })
+                            )
                         except Exception as e:
                             logger.error(f"Failed to process image URL: {str(e)}")
                             raise
                     else:
                         # For base64 data, use it directly
-                        last_msg["content"].append({
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": img
+                        last_msg["content"].append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": img,
+                                },
                             }
-                        })
+                        )
 
             # Log request details
             logger.debug(
@@ -1656,16 +1637,16 @@ class HuggingFaceModels:
 
         # Remove common tag patterns that appear in HuggingFace model responses
         # This handles tags like <||, <|assistant|>, etc.
-        cleaned = re.sub(r'<\|[^>]*\|>', '', text)
+        cleaned = re.sub(r"<\|[^>]*\|>", "", text)
 
         # Handle incomplete tags at the beginning or end
-        cleaned = re.sub(r'^<\|.*?(?=\w)', '', cleaned)  # Beginning of text
-        cleaned = re.sub(r'(?<=\w).*?\|>$', '', cleaned)  # End of text
+        cleaned = re.sub(r"^<\|.*?(?=\w)", "", cleaned)  # Beginning of text
+        cleaned = re.sub(r"(?<=\w).*?\|>$", "", cleaned)  # End of text
 
         # Handle other special cases
-        cleaned = re.sub(r'<\|\|', '', cleaned)
-        cleaned = re.sub(r'<\|', '', cleaned)
-        cleaned = re.sub(r'\|>', '', cleaned)
+        cleaned = re.sub(r"<\|\|", "", cleaned)
+        cleaned = re.sub(r"<\|", "", cleaned)
+        cleaned = re.sub(r"\|>", "", cleaned)
 
         return cleaned.strip()
 
