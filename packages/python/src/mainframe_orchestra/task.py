@@ -4,67 +4,11 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Callable, Optional, Union, Dict, List, Any, Set, Tuple, AsyncIterator, Iterator
 from datetime import datetime, date
 import json
-import re
 import asyncio
 import logging
 
-# Import the configured logger
+from .utils.parse_json_response import parse_json_response
 from .utils.logging_config import logger
-
-
-def parse_json_response(response: str) -> dict:
-    """
-    Parse a JSON response, handling potential formatting issues.
-
-    Args:
-        response (str): The JSON response string to parse.
-
-    Returns:
-        dict: The parsed JSON data.
-
-    Raises:
-        ValueError: If the JSON cannot be parsed after multiple attempts.
-    """
-    # Clean any markdown code blocks
-    if response.startswith("```") and response.endswith("```"):
-        # Split by newlines and remove first and last lines (```language and ```)
-        lines = response.split("\n")
-        if len(lines) > 2:
-            response = "\n".join(lines[1:-1])
-
-    try:
-        # Try to parse the entire response
-        return json.loads(response)
-    except json.JSONDecodeError as e:
-        logger.debug(f"Initial JSON parse failed: {e}")
-
-        # Find the first complete JSON object
-        json_pattern = r"(\{(?:[^{}]|(?:\{[^{}]*\}))*\})"
-        json_matches = re.finditer(json_pattern, response, re.DOTALL)
-
-        for match in json_matches:
-            try:
-                result = json.loads(match.group(1))
-                # Validate it's a dict and has expected structure
-                if isinstance(result, dict):
-                    return result
-            except json.JSONDecodeError:
-                continue
-
-        # Cleave strings before and after JSON
-        cleaved_json = response.strip().lstrip("`").rstrip("`")
-        try:
-            return json.loads(cleaved_json)
-        except json.JSONDecodeError as e:
-            # Try removing any comments before parsing
-            try:
-                # Remove both single-line and multi-line comments
-                comment_pattern = r"//.*?(?:\n|$)|/\*.*?\*/"
-                cleaned_json = re.sub(comment_pattern, "", cleaved_json, flags=re.DOTALL)
-                return json.loads(cleaned_json)
-            except json.JSONDecodeError as e:
-                logger.error(f"All JSON parsing attempts failed: {e}.\nFailed response: {response}")
-                raise ValueError(f"Invalid JSON structure: {e}\nFailed response: {response}")
 
 
 def serialize_result(obj: Any) -> Union[str, Dict[str, Any], List[Any]]:
@@ -131,47 +75,79 @@ class Task(BaseModel):
     agent_id: Optional[str] = Field(None, description="The ID of the agent performing the task")
     role: str = Field(..., description="The role or type of agent performing the task")
     goal: str = Field(..., description="The objective or purpose of the task")
-    attributes: Optional[str] = Field(None, description="Additional attributes or characteristics of the agent or expected responses")
+    attributes: Optional[str] = Field(
+        None,
+        description="Additional attributes or characteristics of the agent or expected responses",
+    )
     agent: Optional[Any] = Field(None, description="The agent associated with this task")
 
     # Core task inputs
     instruction: str = Field(..., description="Specific directions for completing the task")
-    context: Optional[str] = Field(None, description="The background information or setting for the task")
+    context: Optional[str] = Field(
+        None, description="The background information or setting for the task"
+    )
 
     # Model configuration
-    llm: Union[Callable, List[Callable], Tuple[Callable, ...]] = Field(..., description="The language model function(s) to be called. Can be a single function or multiple functions for fallback.")
-    temperature: Optional[float] = Field(default=0.7, description="Temperature setting for the language model")
-    max_tokens: Optional[int] = Field(default=4000, description="Maximum number of tokens for the language model response")
-    require_json_output: bool = Field(default=False, description="Whether to request JSON output from the LLM")
+    llm: Union[Callable, List[Callable], Tuple[Callable, ...]] = Field(
+        ...,
+        description="The language model function(s) to be called. Can be a single function or multiple functions for fallback.",
+    )
+    temperature: Optional[float] = Field(
+        default=0.7, description="Temperature setting for the language model"
+    )
+    max_tokens: Optional[int] = Field(
+        default=4000, description="Maximum number of tokens for the language model response"
+    )
+    require_json_output: bool = Field(
+        default=False, description="Whether to request JSON output from the LLM"
+    )
 
     # Input/Output handling
-    image_data: Optional[Union[List[str], str]] = Field(None, description="Optional base64-encoded image data")
+    image_data: Optional[Union[List[str], str]] = Field(
+        None, description="Optional base64-encoded image data"
+    )
     stream: bool = Field(default=False, description="Whether to stream the final LLM response")
-    messages: List[Dict[str, Any]] = Field(default_factory=list, description="List of messages in OpenAI chat format")
+    messages: List[Dict[str, Any]] = Field(
+        default_factory=list, description="List of messages in OpenAI chat format"
+    )
 
     # Tool configuration
-    tools: Optional[Set[Callable]] = Field(default=None, description="Optional set of tool functions")
-    tool_summaries: bool = Field(default=False, description="Whether to include explanatory summaries for tool calls")
+    tools: Optional[Set[Callable]] = Field(
+        default=None, description="Optional set of tool functions"
+    )
+    tool_summaries: bool = Field(
+        default=False, description="Whether to include explanatory summaries for tool calls"
+    )
 
     # Response handling
-    initial_response: bool = Field(default=False, description="Whether to provide an initial response before tool execution")
+    initial_response: bool = Field(
+        default=False, description="Whether to provide an initial response before tool execution"
+    )
 
     # Execution control
-    thread_id: Optional[str] = Field(None, description="Thread ID for tracking conversation context")
-    event_queue: Optional[Any] = Field(None, description="An optional event queue for inter-thread communication.")
-    pre_execute: Optional[Callable[[Dict[str, Any]], None]] = Field(None, description="Optional pre-execution callback")
+    thread_id: Optional[str] = Field(
+        None, description="Thread ID for tracking conversation context"
+    )
+    event_queue: Optional[Any] = Field(
+        None, description="An optional event queue for inter-thread communication."
+    )
+    pre_execute: Optional[Callable[[Dict[str, Any]], None]] = Field(
+        None, description="Optional pre-execution callback"
+    )
 
     # Pydantic configuration
     model_config = {"arbitrary_types_allowed": True}
 
-    @field_validator('tools')
+    @field_validator("tools")
     @classmethod
     def validate_tools(cls, tools: Optional[Set[Callable]]) -> Optional[Set[Callable]]:
         """Validate that all tools have docstrings."""
         if tools:
             for tool in tools:
                 if not tool.__doc__ or not tool.__doc__.strip():
-                    raise ValueError(f"Tool '{tool.__name__}' is missing a docstring or has an empty docstring. All tools must have documentation.")
+                    raise ValueError(
+                        f"Tool '{tool.__name__}' is missing a docstring or has an empty docstring. All tools must have documentation."
+                    )
         return tools
 
     @classmethod
@@ -428,9 +404,7 @@ class Task(BaseModel):
             raise
 
     async def _direct_llm_call(
-        self,
-        callback: Optional[Callable] = None,
-        response_type: str = "final_response"
+        self, callback: Optional[Callable] = None, response_type: str = "final_response"
     ) -> Union[str, AsyncIterator[str]]:
         """Execute a direct LLM call without tool usage, with fallback support.
 
@@ -464,27 +438,33 @@ class Task(BaseModel):
         for i, llm in enumerate(llms, 1):
             try:
                 if self.stream:
+
                     async def stream_wrapper():
                         async for chunk in await llm(messages=self.messages, **llm_params):
                             if callback:
-                                await callback({
-                                    "type": response_type,  # Use passed response_type
-                                    "content": chunk,
-                                    "agent_id": self.agent_id,
-                                    "timestamp": datetime.now().isoformat(),
-                                    "streaming": True
-                                })
+                                await callback(
+                                    {
+                                        "type": response_type,  # Use passed response_type
+                                        "content": chunk,
+                                        "agent_id": self.agent_id,
+                                        "timestamp": datetime.now().isoformat(),
+                                        "streaming": True,
+                                    }
+                                )
                             yield chunk
+
                     return stream_wrapper()
 
                 # Non-streaming response
                 if callback and len(llms) > 1:
-                    await callback({
-                        "type": "fallback_attempt",
-                        "content": f"Attempting LLM {i}/{len(llms)}",
-                        "agent_id": self.agent_id,
-                        "timestamp": datetime.now().isoformat(),
-                    })
+                    await callback(
+                        {
+                            "type": "fallback_attempt",
+                            "content": f"Attempting LLM {i}/{len(llms)}",
+                            "agent_id": self.agent_id,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
 
                 llm_result = await llm(messages=self.messages, **llm_params)
 
@@ -498,12 +478,14 @@ class Task(BaseModel):
                     if isinstance(response, tuple) and len(response) == 2:
                         reasoning, answer = response
                         if callback:
-                            await callback({
-                                "type": "reasoning",
-                                "content": reasoning,
-                                "agent_id": self.agent_id,
-                                "timestamp": datetime.now().isoformat(),
-                            })
+                            await callback(
+                                {
+                                    "type": "reasoning",
+                                    "content": reasoning,
+                                    "agent_id": self.agent_id,
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
                         response = answer  # Use only the answer portion
 
                 elif isinstance(llm_result, dict):
@@ -514,25 +496,29 @@ class Task(BaseModel):
                     raise ValueError(f"Unexpected result type from LLM: {type(llm_result)}")
 
                 if callback:
-                    await callback({
-                        "type": response_type,  # Use passed response_type
-                        "content": response,
-                        "agent_id": self.agent_id,
-                        "timestamp": datetime.now().isoformat(),
-                        "attempt": i if len(llms) > 1 else None,
-                    })
+                    await callback(
+                        {
+                            "type": response_type,  # Use passed response_type
+                            "content": response,
+                            "agent_id": self.agent_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "attempt": i if len(llms) > 1 else None,
+                        }
+                    )
                 return response.strip()
 
             except Exception as e:
                 last_error = e
                 logger.error(f"LLM attempt {i}/{len(llms)} failed: {str(e)}")
                 if callback:
-                    await callback({
-                        "type": "error",
-                        "content": f"LLM attempt {i}/{len(llms)} failed: {str(e)}",
-                        "agent_id": self.agent_id,
-                        "timestamp": datetime.now().isoformat(),
-                    })
+                    await callback(
+                        {
+                            "type": "error",
+                            "content": f"LLM attempt {i}/{len(llms)} failed: {str(e)}",
+                            "agent_id": self.agent_id,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
                 if i < len(llms):
                     continue
                 raise last_error
@@ -677,12 +663,14 @@ The original task instruction:
                         logger.debug(f"Reasoning content: {reasoning}")
 
                         if callback:
-                            await callback({
-                                "type": "reasoning",
-                                "content": reasoning,
-                                "agent_id": self.agent_id,
-                                "timestamp": datetime.now().isoformat(),
-                            })
+                            await callback(
+                                {
+                                    "type": "reasoning",
+                                    "content": reasoning,
+                                    "agent_id": self.agent_id,
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
 
                         # Log the answer portion
                         logger.debug(f"Answer content: {response}")
@@ -779,19 +767,21 @@ The original task instruction:
                         self.require_json_output = False
                         try:
                             if self.stream:
+
                                 async def callback_wrapper(event):
                                     if callback:
-                                        await callback({**event, "type": "initial_response", "streaming": True})
+                                        await callback(
+                                            {**event, "type": "initial_response", "streaming": True}
+                                        )
+
                                 logger.debug("Starting stream output")
                                 await self._direct_llm_call(
-                                    callback=callback_wrapper,
-                                    response_type="initial_response"
+                                    callback=callback_wrapper, response_type="initial_response"
                                 )
                                 logger.debug("Stream completed")
                             else:
                                 await self._direct_llm_call(
-                                    callback=callback,
-                                    response_type="initial_response"
+                                    callback=callback, response_type="initial_response"
                                 )
                         finally:
                             self.require_json_output = original_json_requirement
@@ -825,7 +815,9 @@ The original task instruction:
 
                             # Log the tool summary (if available and enabled)
                             if self.tool_summaries and "summary" in tool_call:
-                                logger.info(f"Tool summary for [{tool_name}]: {tool_call['summary']}")
+                                logger.info(
+                                    f"Tool summary for [{tool_name}]: {tool_call['summary']}"
+                                )
 
                             # Send tool call event if a callback is provided
                             if callback:
@@ -858,17 +850,20 @@ The original task instruction:
                                 special_params = {}
 
                                 if tool_name == "conduct_tool":
-
                                     # Store callback-related parameters separately
-                                    special_params.update({
-                                        "callback": callback,
-                                        "thread_id": self.thread_id,
-                                        "event_queue": self.event_queue,
-                                        "pre_execute": pre_execute
-                                    })
+                                    special_params.update(
+                                        {
+                                            "callback": callback,
+                                            "thread_id": self.thread_id,
+                                            "event_queue": self.event_queue,
+                                            "pre_execute": pre_execute,
+                                        }
+                                    )
 
                                 # Log only the serializable parameters
-                                logger.info(f"Executing tool: [{tool_name}] with parameters: {json.dumps(serializable_params, separators=(',', ':'))}")
+                                logger.info(
+                                    f"Executing tool: [{tool_name}] with parameters: {json.dumps(serializable_params, separators=(',', ':'))}"
+                                )
 
                                 if asyncio.iscoroutinefunction(tool_func):
                                     # Combine the parameters only for execution
@@ -929,9 +924,7 @@ The original task instruction:
 
                             except Exception as e:
                                 error_msg = f"Tool execution error for {tool_name}: {str(e)}"
-                                logger.error(
-                                    f"[TOOL_LOOP] {error_msg}"
-                                )
+                                logger.error(f"[TOOL_LOOP] {error_msg}")
                                 if callback:
                                     await callback({"type": "error", "content": error_msg})
 
@@ -1027,7 +1020,9 @@ The original task instruction:
                 try:
                     return parse_json_response(result)
                 except ValueError as e:
-                    return ValueError(f"Failed to parse JSON from LLM response: {result}\nError: {e}")
+                    return ValueError(
+                        f"Failed to parse JSON from LLM response: {result}\nError: {e}"
+                    )
 
             return result
 
@@ -1106,4 +1101,3 @@ The original task instruction:
             return "".join(collected)
 
         return loop.run_until_complete(process())
-
