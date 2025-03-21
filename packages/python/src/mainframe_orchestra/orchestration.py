@@ -199,6 +199,7 @@ class Conduct:
                         event_queue=event_queue,
                         messages=messages,
                         tool_summaries=tool_summaries,
+                        pre_execute=kwargs.get("pre_execute")
                     )
 
                     # Generate a delegation result event after task completion
