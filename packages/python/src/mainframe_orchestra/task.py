@@ -609,6 +609,10 @@ Now respond with a JSON object that either requests tool calls or exits the tool
                 logger.debug(f"Starting iteration {iteration_count + 1}/{MAX_ITERATIONS}")
                 iteration_count += 1
 
+                # Call pre_execute at the beginning of each tool loop iteration
+                if pre_execute:
+                    await pre_execute({"agent_id": self.agent_id})
+
                 # Include tool results in context if we have any
                 context_parts = []
                 if self.context:
@@ -757,7 +761,7 @@ The original task instruction:
 
                         initial_prompt = (
                             f"Given the task instruction: '{self.instruction}' and the planned tool calls: {json.dumps(response_data['tool_calls'], indent=2)}, "
-                            "please provide an initial response explaining your planned approach before executing the tools."
+                            "please provide an initial response explaining your planned approach. Provide only a conversational response. You cannot call tools *in* this response, you will be calling them after this response, so don't attempt to call them here. Do not attempt to fully answer the task, and don't ask questions because this will be immediately followed by tool calls."
                         )
 
                         original_messages = self.messages
