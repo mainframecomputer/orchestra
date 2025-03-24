@@ -15,8 +15,8 @@ composio = ComposioAdapter(api_key="YOUR_KEY")
 ### Usage
 
 #### Connecting to Composio apps
-Creating a [Composio connection](https://docs.composio.dev/concepts/auth#connection) which connects your user to a [Contosio intergation](https://docs.composio.dev/concepts/auth#integration).
-The connection_id will be used by Contosio to identify the authenticated user.
+Creating a [Composio connection](https://docs.composio.dev/concepts/auth#connection) which connects your user to a [Composio intergation](https://docs.composio.dev/concepts/auth#integration).
+The connection_id will be used by Composio to identify the authenticated user.
 ```python
 from composio import App
 connection_id, redirect_url = composio.connect(APP.SLACK)
@@ -25,10 +25,15 @@ connection_id, redirect_url = composio.connect(APP.SLACK)
 #### Getting tools
 
 ```python
-slack_tools = composio.get_tools(App.SLACK, connection_id=connection_id)
+slack_tools = composio.get_tools_by_app(App.SLACK, connection_id=connection_id)
 
 # if no connection id is provided, defaut user will be used
-google_doc_tools = composio.get_tools(App.GOOGLEDOCS)
+google_doc_tools = composio.get_tools_by_app(App.GOOGLEDOCS)
+```
+
+You can also fetch only a subset of actions from an app
+```python
+slack_tools = composio.get_tools_by_actions([Action.SLACK_SENDS_A_MESSAGE_TO_A_SLACK_CHANNEL])
 ```
 
 #### Creating agents

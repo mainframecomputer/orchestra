@@ -1,4 +1,4 @@
-from composio import LogLevel, ComposioToolSet, App
+from composio import LogLevel, ComposioToolSet, App, Action, Tag
 from typing import Optional, Set, Callable, Any, Tuple
 from composio.client.collections import ActionModel
 class ComposioAdapter:
@@ -37,9 +37,9 @@ class ComposioAdapter:
 
         return connection_request.connectedAccountId, connection_request.redirectUrl
 
-    def get_tools(self, app: App, connection_id: Optional[str] = None) -> Set[Callable]:
+    def get_tools_by_app(self, app: App, connection_id: Optional[str] = None) -> Set[Callable]:
         """
-        Get the tools for an app
+        Get the tools for an Composio apps
 
         Args:
             app: The app to get the tools for
@@ -52,6 +52,23 @@ class ComposioAdapter:
         
         # Convert app names to App enum values if needed
         tool_schemas = self.composio_toolset.get_action_schemas(apps=[app])
+        return [self._wrap(tool_schema, connection_id, entity_id) for tool_schema in tool_schemas]
+    
+    def get_tools_by_actions(self, actions: list[Action], connection_id: Optional[str] = None) -> Set[Callable]:
+        """
+        Get the tools for a list of Composio actions
+
+        Args:
+            actions: List of actions to get the tools for
+            connection_id: The connection id to use. If not provided, the default connection id will be used.
+
+        Returns:
+            A set of tools
+        """
+        entity_id = "default" if not connection_id else None
+        
+        # Convert app names to App enum values if needed
+        tool_schemas = self.composio_toolset.get_action_schemas(actions=actions)
         return [self._wrap(tool_schema, connection_id, entity_id) for tool_schema in tool_schemas]
 
     def _wrap(

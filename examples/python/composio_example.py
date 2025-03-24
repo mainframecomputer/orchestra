@@ -1,4 +1,4 @@
-from composio import App
+from composio import App, Action
 from mainframe_orchestra import Task, Agent, OpenaiModels, Conduct, set_verbosity
 from mainframe_orchestra.adapters.composio_adapter import ComposioAdapter
 
@@ -18,7 +18,7 @@ slack = Agent(
     goal="Control the Slack app to send and receive messages",
     attributes="You have access to the API provided by Slack. You can help users send and receive messages to a channel and to a single person.",
     llm=OpenaiModels.gpt_4o,
-    tools=composio.get_tools(App.SLACK)
+    tools=composio.get_tools_by_actions([Action.SLACK_SENDS_A_MESSAGE_TO_A_SLACK_CHANNEL])
 )
 
 google_doc = Agent(
@@ -27,7 +27,7 @@ google_doc = Agent(
     goal="Control the Google Doc app to create and edit documents",
     attributes="You have access to the API provided by Google Doc. You can help users create and edit documents.",
     llm=OpenaiModels.gpt_4o,
-    tools=composio.get_tools(App.GOOGLEDOCS)
+    tools=composio.get_tools_by_app(App.GOOGLEDOCS)
 )
 
 conductor_agent = Agent(
