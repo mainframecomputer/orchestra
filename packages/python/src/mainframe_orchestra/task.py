@@ -312,20 +312,14 @@ class Task(BaseModel):
                         f"You are {role or (agent.role if agent else None)}. "
                         f"Your goal is {goal or (agent.goal if agent else None)}"
                         f"{' Your attributes are: ' + (attributes or (agent.attributes if agent else '')) if attributes or (agent.attributes if agent else '') else ''}"
+                        f"{'\nAdditional context: ' + (context or '') if context else ''}"
                     ).strip(),
                 }
                 messages.insert(0, system_message)
 
-            # Combine context and instruction
-            user_content = []
-            if context:
-                user_content.append(context)
-            user_content.append(instruction)
-            user_message_content = "\n\n".join(user_content)
-
             # Only append if different from last message
-            if not messages or messages[-1].get("content") != user_message_content:
-                messages.append({"role": "user", "content": user_message_content})
+            if not messages or messages[-1].get("content") != instruction:
+                messages.append({"role": "user", "content": instruction})
 
             task_data = {
                 "agent_id": agent.agent_id if agent else None,
@@ -615,8 +609,6 @@ Now respond with a JSON object that either requests tool calls or exits the tool
 
                 # Include tool results in context if we have any
                 context_parts = []
-                if self.context:
-                    context_parts.append(self.context)
                 context_parts.append(tool_descriptions)
 
                 if tool_results:  # Using existing tool_results list
