@@ -847,14 +847,13 @@ The original task instruction:
 
                                 if tool_name == "conduct_tool":
                                     # Store callback-related parameters separately
-                                    special_params.update(
-                                        {
-                                            "callback": callback,
-                                            "thread_id": self.thread_id,
-                                            "event_queue": self.event_queue,
-                                            "pre_execute": pre_execute,
-                                        }
-                                    )
+                                    special_params.update({
+                                        "callback": callback,
+                                        "thread_id": self.thread_id,
+                                        "event_queue": self.event_queue,
+                                        "pre_execute": pre_execute,
+                                        "parent_context": self.context,  # Pass the parent task's context
+                                    })
 
                                 # Log only the serializable parameters
                                 logger.info(
