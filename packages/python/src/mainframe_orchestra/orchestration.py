@@ -46,6 +46,9 @@ class Conduct:
                 messages = kwargs.get("messages", [])
                 current_time = datetime.now().isoformat()
 
+                # Get the parent task's context if available
+                parent_context = kwargs.get("parent_context")
+
                 # Track agent iterations
                 agent_call_counts = {}  # Track {agent_id: count}
 
@@ -108,6 +111,7 @@ class Conduct:
                                 f"You are {target_agent.role}. "
                                 f"Your goal is {target_agent.goal}"
                                 f"{' Your attributes are: ' + target_agent.attributes if target_agent.attributes and target_agent.attributes.strip() else ''}"
+                                f"{'\nAdditional context: ' + parent_context if parent_context else ''}"
                             ).strip(),
                         }
                     ]
@@ -199,7 +203,8 @@ class Conduct:
                         event_queue=event_queue,
                         messages=messages,
                         tool_summaries=tool_summaries,
-                        pre_execute=kwargs.get("pre_execute")
+                        pre_execute=kwargs.get("pre_execute"),
+                        context=parent_context  # Pass the parent context to the delegated task
                     )
 
                     # Generate a delegation result event after task completion
