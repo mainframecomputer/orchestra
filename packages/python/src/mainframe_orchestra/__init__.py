@@ -42,7 +42,7 @@ from .tools import (
     WhisperTools,
     WikipediaTools,
 )
-from .adapters import MCPOrchestra
+from .adapters import MCPOrchestra, ComposioAdapter
 
 if TYPE_CHECKING:
     from .tools.audio_tools import TextToSpeechTools, WhisperTools
@@ -136,4 +136,5 @@ __all__ = [
 
     # Adapters
     "MCPOrchestra",
+    "ComposioAdapter",
 ]

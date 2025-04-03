@@ -48,6 +48,7 @@ tzdata = "^2024.2"
 braintrust = "*"
 mcp = "*"
 fastmcp = "*"
+composio-core = "^0.7.10"
 
 [tool.poetry.extras]
 langchain_tools = [
