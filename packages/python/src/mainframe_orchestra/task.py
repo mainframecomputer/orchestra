@@ -312,7 +312,7 @@ class Task(BaseModel):
                         f"You are {role or (agent.role if agent else None)}. "
                         f"Your goal is {goal or (agent.goal if agent else None)}"
                         f"{' Your attributes are: ' + (attributes or (agent.attributes if agent else '')) if attributes or (agent.attributes if agent else '') else ''}"
-                        f"{'\nAdditional context: ' + (context or '') if context else ''}"
+                        f"{' Additional context: ' + (context or '') if context else ''}"
                     ).strip(),
                 }
                 messages.insert(0, system_message)
