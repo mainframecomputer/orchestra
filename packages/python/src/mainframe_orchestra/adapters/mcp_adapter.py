@@ -1,3 +1,5 @@
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+
 """
 MCP Adapter for Orchestra - Allows Orchestra agents to use tools from MCP servers.
 
@@ -10,12 +12,15 @@ from types import TracebackType
 from typing import Any, Callable, Dict, List, Optional, Set, Literal
 import subprocess
 import json
+import time
 from mcp import ClientSession, StdioServerParameters, stdio_client
 from mcp.types import (
     Tool as MCPTool,
     CallToolResult,
     TextContent
 )
+from mcp.client.sse import sse_client
+from ..utils.logging_config import logger
 
 class MCPOrchestra:
     """
@@ -25,25 +30,37 @@ class MCPOrchestra:
     into Orchestra-compatible callables that can be used in Orchestra Tasks.
     """
 
-    def __init__(self) -> None:
-        """Initialize a new MCP Orchestra adapter."""
+    def __init__(self, credentials: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Initialize a new MCP Orchestra adapter.
+
+        Args:
+            credentials: Optional dictionary containing credentials for various MCP servers
+        """
         self.exit_stack = AsyncExitStack()
         self.sessions: Dict[str, ClientSession] = {}
         self.tools: Set[Callable] = set()
         self.server_tools: Dict[str, Set[Callable]] = {}
         self.server_processes: Dict[str, subprocess.Popen] = {}
+        self.credentials = credentials or {}
+        logger.debug("Initialized MCPOrchestra adapter")
 
     async def connect(
         self,
         server_name: str,
         *,
-        command: str,
-        args: List[str],
+        command: Optional[str] = None,
+        args: Optional[List[str]] = None,
         env: Optional[Dict[str, str]] = None,
         encoding: str = "utf-8",
         encoding_error_handler: Literal["strict", "ignore", "replace"] = "strict",
         start_server: bool = False,
         server_startup_delay: float = 2.0,
+        sse_url: Optional[str] = None,
+        sse_headers: Optional[Dict[str, Any]] = None,
+        sse_timeout: float = 5.0,
+        sse_read_timeout: float = 300.0,
+        credentials_key: Optional[str] = None,
     ) -> None:
         """
         Connect to an MCP server and load its tools.
@@ -57,48 +74,107 @@ class MCPOrchestra:
             encoding_error_handler: How to handle encoding errors
             start_server: Whether to start the server process before connecting
             server_startup_delay: Time to wait after starting server before connecting (seconds)
+            sse_url: URL for SSE-based MCP server (if using SSE instead of stdio)
+            sse_headers: Optional HTTP headers for SSE connection
+            sse_timeout: Timeout for SSE connection establishment (seconds)
+            sse_read_timeout: Timeout for SSE event reading (seconds)
+            credentials_key: Optional key to use for looking up credentials in self.credentials
         """
-        # Optionally start the server process
-        if start_server:
-            import time
+        logger.debug(f"Connecting to MCP server: {server_name}")
 
-            full_command = [command] + args
-            server_process = subprocess.Popen(
-                full_command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env
+        # Apply credentials if provided
+        if credentials_key and credentials_key in self.credentials:
+            server_creds = self.credentials[credentials_key]
+            logger.debug(f"Using credentials from key: {credentials_key}")
+
+            # Update environment variables with credentials
+            if env is None:
+                env = {}
+
+            # Merge credentials into environment variables
+            for key, value in server_creds.items():
+                env_key = key.upper()  # Convert to uppercase for environment variables
+                env[env_key] = value
+                logger.debug(f"Added credential to environment: {env_key}")
+
+        # Check if we're using SSE or stdio
+        if sse_url:
+            logger.debug(f"Using SSE connection for server {server_name}: {sse_url}")
+            # SSE connection
+            transport = await self.exit_stack.enter_async_context(
+                sse_client(
+                    url=sse_url,
+                    headers=sse_headers,
+                    timeout=sse_timeout,
+                    sse_read_timeout=sse_read_timeout,
+                )
             )
-            self.server_processes[server_name] = server_process
+            read, write = transport
+            session = await self.exit_stack.enter_async_context(ClientSession(read, write))
 
-            # Give the server time to start up
-            time.sleep(server_startup_delay)
+            # Initialize session
+            await session.initialize()
+            self.sessions[server_name] = session
+            logger.debug(f"Successfully initialized session for server: {server_name}")
 
-        # Create server parameters
-        server_params = StdioServerParameters(
-            command=command,
-            args=args,
-            env=env,
-            encoding=encoding,
-            encoding_error_handler=encoding_error_handler,
-        )
+            # Load tools from this server
+            server_tools = await self._load_tools(session, server_name)
+            self.server_tools[server_name] = server_tools
+            self.tools.update(server_tools)
+            logger.debug(f"Loaded {len(server_tools)} tools from server: {server_name}")
 
-        # Establish connection
-        stdio_transport = await self.exit_stack.enter_async_context(
-            stdio_client(server_params)
-        )
-        read, write = stdio_transport
-        session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+        else:
+            # Stdio connection
+            # Optionally start the server process
+            if start_server:
+                logger.debug(f"Starting MCP server process for {server_name}: {command} {args}")
+                if not command or not args:
+                    raise ValueError("Command and args must be provided when start_server is True")
 
-        # Initialize session
-        await session.initialize()
-        self.sessions[server_name] = session
+                full_command = [command] + args
+                server_process = subprocess.Popen(
+                    full_command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env=env
+                )
+                self.server_processes[server_name] = server_process
+                logger.debug(f"Server process started with PID: {server_process.pid}")
 
-        # Load tools from this server
-        server_tools = await self._load_tools(session, server_name)
-        self.server_tools[server_name] = server_tools
-        self.tools.update(server_tools)
+                # Give the server time to start up
+                logger.debug(f"Waiting {server_startup_delay}s for server to start")
+                time.sleep(server_startup_delay)
+
+            # Create server parameters
+            if not command or not args:
+                raise ValueError("Command and args must be provided for stdio connection")
+
+            server_params = StdioServerParameters(
+                command=command,
+                args=args,
+                env=env,
+                encoding=encoding,
+                encoding_error_handler=encoding_error_handler,
+            )
+
+            # Establish connection
+            stdio_transport = await self.exit_stack.enter_async_context(
+                stdio_client(server_params)
+            )
+            read, write = stdio_transport
+            session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+
+            # Initialize session
+            await session.initialize()
+            self.sessions[server_name] = session
+            logger.debug(f"Successfully initialized session for server: {server_name}")
+
+            # Load tools from this server
+            server_tools = await self._load_tools(session, server_name)
+            self.server_tools[server_name] = server_tools
+            self.tools.update(server_tools)
+            logger.debug(f"Loaded {len(server_tools)} tools from server: {server_name}")
 
     async def _load_tools(self, session: ClientSession, server_name: str) -> Set[Callable]:
         """
@@ -111,8 +187,11 @@ class MCPOrchestra:
         Returns:
             A set of callable functions that can be used with Orchestra
         """
+        logger.debug(f"Loading tools from server: {server_name}")
         tools_info = await session.list_tools()
         orchestra_tools: Set[Callable] = set()
+
+        logger.debug(f"Found {len(tools_info.tools)} tools on server: {server_name}")
 
         for tool in tools_info.tools:
             # Get the tool name
@@ -246,14 +325,18 @@ class MCPOrchestra:
         # Handle errors
         if result.isError:
             error_message = "\n".join(text_parts) if text_parts else "Unknown MCP tool error"
+            logger.debug(f"Tool execution failed: {error_message}")
             raise Exception(error_message)
 
         # Return combined text
         if not text_parts:
+            logger.debug("Tool executed successfully (no text output)")
             return "Tool executed successfully (no text output)"
         elif len(text_parts) == 1:
+            logger.debug("Tool executed successfully with single text output")
             return text_parts[0]
         else:
+            logger.debug(f"Tool executed successfully with {len(text_parts)} text outputs")
             return "\n".join(text_parts)
 
     def get_tools(self) -> Set[Callable]:
@@ -284,17 +367,22 @@ class MCPOrchestra:
 
     async def close(self) -> None:
         """Close all connections to MCP servers and terminate any started server processes."""
+        logger.debug("Closing all MCP server connections")
         # Close all MCP sessions
         await self.exit_stack.aclose()
 
         # Terminate any server processes we started
         for server_name, process in self.server_processes.items():
+            logger.debug(f"Terminating server process for {server_name} (PID: {process.pid})")
             try:
                 process.terminate()
                 process.wait(timeout=5)  # Wait up to 5 seconds for graceful termination
+                logger.debug(f"Server process for {server_name} terminated gracefully")
             except subprocess.TimeoutExpired:
+                logger.debug(f"Server process for {server_name} did not terminate gracefully, forcing kill")
                 process.kill()  # Force kill if it doesn't terminate gracefully
                 process.wait()
+                logger.debug(f"Server process for {server_name} killed")
 
     async def __aenter__(self) -> "MCPOrchestra":
         """Support for async context manager."""
