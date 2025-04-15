@@ -2,6 +2,8 @@
 
 Orchestra provides integration with the Model Context Protocol (MCP), allowing your agents to use tools implemented in various programming languages and frameworks. The MCP adapter enables you to extend Orchestra's capabilities beyond Python and integrate with external services and libraries built by the community based on Model Context Protocol (MCP).
 
+You can connect your orchestra agents to MCP servers running locally with stdio, or remotely via SSE (Server-Sent Events) with a simple URL-based setup.
+
 ## What is MCP?
 
 The Model Context Protocol (MCP), developed by Anthropic, is a standardized protocol for communication between language models and external tools. It allows tools to be implemented in various programming languages while maintaining a consistent interface for language models to interact with them.
@@ -422,6 +424,55 @@ async def run_slack_mcp():
 
 if __name__ == "__main__":
     asyncio.run(run_slack_mcp())
+```
+
+## Remote MCP Server Example
+
+You can also connect to MCP servers hosted remotely using SSE (Server-Sent Events):
+
+```python
+import asyncio
+from mainframe_orchestra import Task, Agent, OpenaiModels, set_verbosity
+from orchestra.packages.python.src.mainframe_orchestra.adapters.mcp_adapter import MCPOrchestra
+
+set_verbosity(2)
+
+async def run_agent_with_mcp_tools():
+    # Create and connect to MCP server using async context manager
+    async with MCPOrchestra() as mcp_client:
+        try:
+            # Connect to the Supabase MCP server
+            await mcp_client.connect(
+                server_name="supabase",
+                sse_url="YOUR_MCP_URL_HERE"
+            )
+
+            # Get all tools from the MCP server
+            mcp_tools = mcp_client.get_tools()
+            print(f"Available tools: {[tool.__name__ for tool in mcp_tools]}")
+
+            agent = Agent(
+                agent_id="supabase_agent",
+                role="Supabase Database Assistant",
+                goal="Help users interact with Supabase databases",
+                tools=mcp_tools,
+                llm=OpenaiModels.gpt_4o
+            )
+
+            user_input = input("Enter a request: ")
+
+            result = await Task.create(
+                agent=agent,
+                instruction=user_input
+            )
+
+            print(result)
+
+        except Exception as e:
+            print(f"Error occurred: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(run_agent_with_mcp_tools())
 ```
 
 ## Creating Your Own MCP Server with FastMCP
