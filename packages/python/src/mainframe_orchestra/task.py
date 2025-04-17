@@ -706,10 +706,10 @@ The original task instruction:
                         if "tool" not in tool_call:
                             raise ValueError("Each tool call must specify a 'tool' name")
 
+                        # Make params default to empty dict if not provided
                         if "params" not in tool_call:
-                            raise ValueError("Each tool call must include 'params'")
-
-                        if not isinstance(tool_call["params"], dict):
+                            tool_call["params"] = {}
+                        elif not isinstance(tool_call["params"], dict):
                             raise ValueError("Tool 'params' must be an object")
 
                         tool_name = tool_call.get("tool")
