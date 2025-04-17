@@ -384,6 +384,64 @@ class MCPOrchestra:
                 process.wait()
                 logger.debug(f"Server process for {server_name} killed")
 
+
+    async def close_session(self, server_name: str) -> None:
+        """
+        Close a specific MCP server session by name.
+
+        This method is designed to be called from the same task context where the connection
+        was established, to avoid the "Attempted to exit cancel scope in a different task" error.
+
+        Args:
+            server_name: The name of the server session to close
+        """
+        logger.debug(f"Closing MCP server session: {server_name}")
+
+        # Check if the session exists
+        if server_name not in self.sessions:
+            logger.warning(f"Attempted to close non-existent session: {server_name}")
+            return
+
+        # Remove the session from our tracking
+        session = self.sessions.pop(server_name)
+        logger.debug(f"Retrieved session for {server_name}, type: {type(session)}")
+
+        # Remove tools associated with this server
+        if server_name in self.server_tools:
+            tools_to_remove = self.server_tools.pop(server_name)
+            self.tools.difference_update(tools_to_remove)
+            logger.debug(f"Removed {len(tools_to_remove)} tools associated with {server_name}")
+
+        # Check if the session has a close method
+        if not hasattr(session, 'close'):
+            logger.warning(f"Session for {server_name} does not have a close method")
+            return
+
+        # Close the session directly
+        try:
+            logger.debug(f"Calling close() method on session for {server_name}")
+            await session.close()
+            logger.info(f"Successfully closed session for {server_name}")
+        except Exception as e:
+            logger.error(f"Error closing session for {server_name}: {e}", exc_info=True)
+
+        # Also terminate the server process if we started it
+        if server_name in self.server_processes:
+            process = self.server_processes.pop(server_name)
+            logger.debug(f"Terminating server process for {server_name} (PID: {process.pid})")
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+                logger.info(f"Server process for {server_name} terminated gracefully")
+            except subprocess.TimeoutExpired:
+                logger.debug(f"Server process for {server_name} did not terminate gracefully, forcing kill")
+                process.kill()
+                process.wait()
+                logger.info(f"Server process for {server_name} killed")
+        else:
+            logger.debug(f"No server process found for {server_name}")
+
+
     async def __aenter__(self) -> "MCPOrchestra":
         """Support for async context manager."""
         return self
