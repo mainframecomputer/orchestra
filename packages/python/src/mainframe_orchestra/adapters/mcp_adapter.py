@@ -232,7 +232,7 @@ class MCPOrchestra:
                     # Add enum values if present
                     if "enum" in param_info and param_info["enum"]:
                         enum_values = ", ".join(map(str, param_info["enum"]))
-                        param_line += f" (Allowed values: [{enum_values}])"
+                        param_line += f" (Allowed values (enum): [{enum_values}])"
 
                     # Add the complete line to the docstring
                     docstring += param_line + "\n"
