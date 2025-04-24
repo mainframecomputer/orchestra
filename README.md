@@ -99,25 +99,25 @@ print(result)
 Orchestra supports a wide range of language models from a number of providers:
 
 ### OpenAI
-GPT-4.5-preview, GPT-4o, GPT-4o Mini, & Custom defined models
+GPT-4.5-preview, GPT-4o, GPT-4o-mini, o1, o3, o4-mini, GPT-4.1, & custom defined models
 
 ### Anthropic
-Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, Claude 3.7 Sonnet, & Custom defined models
+Claude 3 Haiku, Claude 3 Sonnet, Claude 3 Opus, Claude 3.5 Sonnet, Claude 3.7 Sonnet, & custom defined models
 
 ### Openrouter
-GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, & Custom defined models
+GPT-4.1, o1, o3, o4-mini, Sonnet (3.7), GPT-4 Turbo, Claude 3 Opus, Mixtral 8x7B, Llama 3.1 405B, X-AI Grok series, Meta-Llama 4 Maverick, Perplexity Sonar, & custom defined models
 
 ### Ollama
-Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & Custom defined models
+Mistral, Mixtral, Llama 3.1, Qwen, Gemma, & custom defined models
 
 ### Groq
-Mixtral 8x7B, Llama 3, Llama 3.1, Gemma, & Custom defined models
+Mixtral 8x7B, Llama 3, Llama 3.1, Gemma, & custom defined models
 
 ### TogetherAI
 Custom defined models
 
 ### Gemini
-Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models
+Gemini 2.5 Pro Preview, Gemini 2.5 Flash Preview, Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & custom defined models
 
 ### Deepseek
 Deepseek Reasoner, Deepseek Chat, & Custom defined models
