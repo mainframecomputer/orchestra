@@ -81,6 +81,44 @@ except ImportError:
 
     config = EnvConfig()
 
+# Schema for the expected tool call JSON response
+TOOL_CALLS_SCHEMA = {
+    "name": "execute_tool_calls",
+    "description": "Determine the next tool calls to execute or indicate that tool use is complete.",
+    "strict": False,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "tool_calls": {
+                "type": "array",
+                "description": "A list of tool calls to request. Leave empty if no further tool calls are required.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "tool": {
+                            "type": "string",
+                            "description": "The name of the tool to be called."
+                        },
+                        "params": {
+                            "type": "object",
+                            "description": "The parameters required for the tool call.",
+                            "additionalProperties": True
+                        },
+                        "summary": {
+                            "type": ["string", "null"],
+                            "description": "Optional summary explaining the reason for the tool call."
+                        }
+                    },
+                    "required": ["tool", "params", "summary"],
+                    "additionalProperties": False
+                }
+            }
+        },
+        "required": ["tool_calls"],
+        "additionalProperties": False
+    }
+}
+
 # Global settings
 verbosity = False
 debug = False
@@ -177,8 +215,7 @@ class OpenAICompatibleProvider:
         max_tokens: int = 4000,
         require_json_output: bool = False,
         messages: Optional[List[Dict[str, str]]] = None,
-        stream: bool = False,
-        additional_params: Optional[Dict] = None,
+        stream: bool = False
     ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
         """Sends a request to an OpenAI-compatible API provider"""
         try:
@@ -198,28 +235,46 @@ class OpenAICompatibleProvider:
 
             client = wrap_openai(AsyncOpenAI(**client_kwargs))
 
-            # Prepare request parameters
+            # Separate system message (instructions) from input messages
+            system_instructions = None
+            input_messages = []
+            if messages:
+                for msg in messages:
+                    if msg["role"] == "system":
+                        system_instructions = msg["content"]
+                    else:
+                        input_messages.append(msg)
+            else:
+                input_messages = []
+
+            # Prepare top-level request parameters
             request_params = {
                 "model": model,
-                "messages": messages,
+                "input": input_messages,
                 "temperature": temperature,
+                "max_output_tokens": max_tokens, # Renamed from max_tokens
             }
 
-            # Add max_tokens if provided
-            if max_tokens is not None:
-                request_params["max_tokens"] = max_tokens
+            # Add instructions if a system message was found
+            if system_instructions:
+                request_params["instructions"] = system_instructions
 
-            # Add JSON output format if required
+            # Prepare the 'text' parameter ONLY if JSON output is required
+            request_text_params = None
             if require_json_output:
-                request_params["response_format"] = {"type": "json_object"}
+                request_text_params = {
+                    "format": {
+                        "type": "json_schema",
+                        "name": TOOL_CALLS_SCHEMA["name"],
+                        "schema": TOOL_CALLS_SCHEMA["schema"],
+                        "strict": TOOL_CALLS_SCHEMA.get("strict", True)
+                    }
+                }
+                request_params["text"] = request_text_params
 
-            # Add any additional parameters
-            if additional_params:
-                request_params.update(additional_params)
-
-            # Log request details
+            # Log request details (adjusted for new structure)
             logger.debug(
-                f"[LLM] {provider_name} ({model}) Request: {json.dumps({'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'require_json_output': require_json_output, 'stream': stream}, separators=(',', ':'))}"
+                f"[LLM] {provider_name} ({model}) Request (Responses API): {json.dumps(request_params | {'stream': stream}, separators=(',', ':'))}"
             )
 
             if stream:
@@ -227,23 +282,30 @@ class OpenAICompatibleProvider:
 
                 async def stream_generator():
                     full_message = ""
-                    logger.debug("Stream started")
+                    logger.debug("Stream started (Responses API)")
                     try:
-                        stream_params = {**request_params, "stream": True}
-                        response = await client.chat.completions.create(**stream_params)
-                        async for chunk in response:
-                            if chunk.choices[0].delta.content:
-                                content = chunk.choices[0].delta.content
+                        # Pass stream=True directly in the main call
+                        response_stream = await client.responses.create(
+                            **request_params,
+                            stream=True
+                        )
+                        async for chunk in response_stream:
+                            # Adapt based on actual chunk structure from responses API stream
+                            # Example: Assuming chunk might have delta.text
+                            if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text') and chunk.delta.text:
+                                content = chunk.delta.text
                                 full_message += content
                                 yield content
-                        logger.debug("Stream complete")
+                            # Add handling for other chunk types if necessary
+
+                        logger.debug("Stream complete (Responses API)")
                         logger.debug(f"Full message: {full_message}")
-                        yield "\n"
+                        yield "\n" # Add newline after stream completion
                     except OpenAIAuthenticationError as e:
                         logger.error(
                             f"Authentication failed: Please check your {provider_name} API key. Error: {str(e)}"
                         )
-                        yield ""
+                        yield "" # Return empty on error
                     except OpenAIBadRequestError as e:
                         logger.error(f"Invalid request parameters: {str(e)}")
                         yield ""
@@ -262,22 +324,27 @@ class OpenAICompatibleProvider:
 
                 return stream_generator()
 
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response = await client.chat.completions.create(**request_params)
+            # Non-streaming logic for responses.create
+            spinner.text = f"Waiting for {model} response (Responses API)..."
+            response = await client.responses.create(
+                **request_params,
+                stream=False
+            )
 
-            content = response.choices[0].message.content
-            spinner.succeed("Request completed")
+            # Access response content (assuming output_text)
+            content = response.output_text if hasattr(response, 'output_text') else ""
+            spinner.succeed("Request completed (Responses API)")
 
             # Process JSON responses
-            if require_json_output:
+            if require_json_output and content:
                 try:
                     json_response = parse_json_response(content)
-                    compressed_content = json.dumps(json_response, separators=(",", ":"))
+                    compressed_content = json.dumps(json_response, separators=(',', ':'))
                     logger.debug(f"[LLM] API Response: {compressed_content}")
                     return compressed_content, None
                 except ValueError as e:
-                    return "", e
+                    logger.error(f"Failed to parse response as JSON: {content}. Error: {e}")
+                    return "", e # Return error if JSON parsing fails
 
             # For non-JSON responses
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
@@ -329,42 +396,6 @@ class OpenaiModels:
         """
         cls._default_base_url = base_url
         logger.info(f"Set default OpenAI base URL to: {base_url}")
-
-    @staticmethod
-    def _transform_o1_messages(
-        messages: List[Dict[str, str]], require_json_output: bool = False
-    ) -> List[Dict[str, str]]:
-        """
-        Transform messages for o1 models by handling system messages and JSON requirements.
-        """
-        modified_messages = []
-        system_content = ""
-
-        # Extract system message if present
-        for msg in messages:
-            if msg["role"] == "system":
-                system_content = msg["content"]
-                break
-
-        # Add system content as a user message if present
-        if system_content:
-            modified_messages.append(
-                {"role": "user", "content": f"[System Instructions]\n{system_content}"}
-            )
-
-        # Process remaining messages
-        for msg in messages:
-            if msg["role"] == "system":
-                continue
-            elif msg["role"] == "user":
-                content = msg["content"]
-                if require_json_output and msg == messages[-1]:  # If this is the last user message
-                    content += "\n\nDo NOT include backticks, language declarations, or commentary before or after the JSON content."
-                modified_messages.append({"role": "user", "content": content})
-            else:
-                modified_messages.append(msg)
-
-        return modified_messages
 
     @classmethod
     async def send_openai_request(
@@ -419,15 +450,8 @@ class OpenaiModels:
             base_url or cls._default_base_url or getattr(config, "OPENAI_BASE_URL", None)
         )
 
-        # Handle o1 model message transformations
-        additional_params = None
-        if model in ["o1-mini", "o1-preview"]:
-            messages = cls._transform_o1_messages(messages, require_json_output)
-            # o1 models use max_completion_tokens instead of max_tokens
-            additional_params = {"max_completion_tokens": max_tokens}
-            # Set max_tokens to None as it's not used
-            max_tokens = None
-            # Override temperature for o1 models - they only support temperature=1
+        # Handle o series model temperature
+        if model.startswith("o"):
             temperature = 1.0
 
         return await OpenAICompatibleProvider.send_request(
@@ -440,8 +464,7 @@ class OpenaiModels:
             max_tokens=max_tokens,
             require_json_output=require_json_output,
             messages=messages,
-            stream=stream,
-            additional_params=additional_params,
+            stream=stream
         )
 
     @staticmethod
@@ -477,6 +500,8 @@ class OpenaiModels:
     o1_mini = custom_model("o1-mini")
     o1_preview = custom_model("o1-preview")
     gpt_4_5_preview = custom_model("gpt-4.5-preview")
+    o4_mini = custom_model("o4-mini")
+    o3 = custom_model("o3")
 
 
 class AnthropicModels:
@@ -788,11 +813,6 @@ class OpenrouterModels:
         # Get API key
         api_key = config.validate_api_key("OPENROUTER_API_KEY")
 
-        # Handle o1 model message transformations if needed
-        additional_params = None
-        if model.endswith("o1-mini") or model.endswith("o1-preview"):
-            messages = OpenaiModels._transform_o1_messages(messages, require_json_output)
-
         return await OpenAICompatibleProvider.send_request(
             model=model,
             provider_name="OpenRouter",
@@ -803,8 +823,7 @@ class OpenrouterModels:
             max_tokens=max_tokens,
             require_json_output=require_json_output,
             messages=messages,
-            stream=stream,
-            additional_params=additional_params,
+            stream=stream
         )
 
     @staticmethod
