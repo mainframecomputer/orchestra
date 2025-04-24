@@ -226,7 +226,16 @@ class MCPOrchestra:
                     param_type = param_info.get("type", "")
                     type_str = f" ({param_type})" if param_type else ""
 
-                    docstring += f"    {param_name}{req_str}{type_str}: {description}\n"
+                    # Start building the parameter line
+                    param_line = f"    {param_name}{req_str}{type_str}: {description}"
+
+                    # Add enum values if present
+                    if "enum" in param_info and param_info["enum"]:
+                        enum_values = ", ".join(map(str, param_info["enum"]))
+                        param_line += f" (Allowed values: [{enum_values}])"
+
+                    # Add the complete line to the docstring
+                    docstring += param_line + "\n"
 
             # Set the docstring
             tool_callable.__doc__ = docstring
