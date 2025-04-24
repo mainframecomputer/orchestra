@@ -1,4 +1,4 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 import json
 import logging
@@ -8,6 +8,7 @@ import re
 import time
 import requests
 import base64
+import asyncio
 from typing import AsyncGenerator, Dict, Iterator, List, Optional, Tuple, Union
 
 import google.generativeai as genai
@@ -331,11 +332,11 @@ class OpenaiModels:
         logger.info(f"Set default OpenAI base URL to: {base_url}")
 
     @staticmethod
-    def _transform_o1_messages(
+    def _transform_reasoning_model_messages(
         messages: List[Dict[str, str]], require_json_output: bool = False
     ) -> List[Dict[str, str]]:
         """
-        Transform messages for o1 models by handling system messages and JSON requirements.
+        Transform messages for reasoning models by handling system messages and JSON requirements.
         """
         modified_messages = []
         system_content = ""
@@ -404,8 +405,8 @@ class OpenaiModels:
                 content.append({"type": "text", "text": last_user_msg["content"]})
                 last_user_msg["content"] = content
 
-        # Add check for non-streaming models (currently only o1 models) at the start
-        if stream and model in ["o1-mini", "o1-preview"]:
+        # Check for non-streaming models
+        if stream and model in ["o3-mini", "o3-preview", "o4-mini", "o4-preview"]:
             logger.error(
                 f"Streaming is not supported for {model}. Falling back to non-streaming request."
             )
@@ -419,16 +420,20 @@ class OpenaiModels:
             base_url or cls._default_base_url or getattr(config, "OPENAI_BASE_URL", None)
         )
 
-        # Handle o1 model message transformations
+        # Handle reasoning model message transformations
         additional_params = None
-        if model in ["o1-mini", "o1-preview"]:
-            messages = cls._transform_o1_messages(messages, require_json_output)
-            # o1 models use max_completion_tokens instead of max_tokens
+        if model in ["o1-mini", "o1-preview", "o1", "o3-mini", "o3", "o4-mini"]:
+            messages = cls._transform_reasoning_model_messages(messages, require_json_output)
+            # These models use max_completion_tokens instead of max_tokens
             additional_params = {"max_completion_tokens": max_tokens}
             # Set max_tokens to None as it's not used
             max_tokens = None
-            # Override temperature for o1 models - they only support temperature=1
+            # Override temperature for these models - they only support temperature=1
             temperature = 1.0
+            # Disable JSON output format as these models don't support it
+            if require_json_output:
+                logger.debug(f"JSON output format is not supported for {model}. Request will proceed without JSON formatting.")
+                require_json_output = False
 
         return await OpenAICompatibleProvider.send_request(
             model=model,
@@ -476,7 +481,14 @@ class OpenaiModels:
     gpt_4o_mini = custom_model("gpt-4o-mini")
     o1_mini = custom_model("o1-mini")
     o1_preview = custom_model("o1-preview")
+    o1 = custom_model("o1")
+    o3_mini = custom_model("o3-mini")
+    o3 = custom_model("o3")
+    o4_mini = custom_model("o4-mini")
     gpt_4_5_preview = custom_model("gpt-4.5-preview")
+    gpt_4_1 = custom_model("gpt-4.1")
+    gpt_4_1_mini = custom_model("gpt-4.1-mini")
+    gpt_4_1_nano = custom_model("gpt-4.1-nano")
 
 
 class AnthropicModels:
@@ -497,216 +509,230 @@ class AnthropicModels:
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
         Sends an asynchronous request to an Anthropic model using the Messages API format.
+        Includes rate limit handling with exponential backoff.
         """
         spinner = Halo(text="Sending request to Anthropic...", spinner="dots")
         spinner.start()
 
-        try:
-            api_key = config.validate_api_key("ANTHROPIC_API_KEY")
-            client = AsyncAnthropic(api_key=api_key)
-            if not client.api_key:
-                raise ValueError("Anthropic API key not found in environment variables.")
+        # Define retry parameters
+        max_retries = 3
+        backoff_times = [15, 30, 60]  # seconds
 
-            # Convert OpenAI format messages to Anthropic Messages API format
-            anthropic_messages = []
-            system_message = None
+        for attempt in range(max_retries):
+            try:
+                api_key = config.validate_api_key("ANTHROPIC_API_KEY")
+                client = AsyncAnthropic(api_key=api_key)
+                if not client.api_key:
+                    raise ValueError("Anthropic API key not found in environment variables.")
 
-            # Process provided messages or create from prompts
-            if messages:
-                for msg in messages:
-                    role = msg["role"]
-                    content = msg["content"]
+                # Convert OpenAI format messages to Anthropic Messages API format
+                anthropic_messages = []
+                system_message = None
 
-                    # Handle system messages separately
-                    if role == "system":
-                        system_message = content  # Store the system message from messages
-                    elif role == "user":
-                        anthropic_messages.append({"role": "user", "content": content})
-                    elif role == "assistant":
-                        anthropic_messages.append({"role": "assistant", "content": content})
-                    elif role == "function":
-                        anthropic_messages.append(
-                            {"role": "user", "content": f"Function result: {content}"}
-                        )
+                # Process provided messages or create from prompts
+                if messages:
+                    for msg in messages:
+                        role = msg["role"]
+                        content = msg["content"]
 
-            # If JSON output is required, add instruction to the system message
-            if require_json_output:
-                json_instruction = "Do not comment before or after the JSON, or provide backticks or language declarations, return only the JSON object."
+                        # Handle system messages separately
+                        if role == "system":
+                            system_message = content  # Store the system message from messages
+                        elif role == "user":
+                            anthropic_messages.append({"role": "user", "content": content})
+                        elif role == "assistant":
+                            anthropic_messages.append({"role": "assistant", "content": content})
+                        elif role == "function":
+                            anthropic_messages.append(
+                                {"role": "user", "content": f"Function result: {content}"}
+                            )
 
-                # If we have a system message, append the instruction
-                if system_message is not None:
-                    system_message += f"\n\n{json_instruction}"
-                else:
-                    # If no system message exists, create one
-                    system_message = json_instruction
+                # If JSON output is required, add instruction to the system message
+                if require_json_output:
+                    json_instruction = "Do not comment before or after the JSON, or provide backticks or language declarations, return only the JSON object."
 
-            # Handle image data if present
-            if image_data:
-                if isinstance(image_data, str):
-                    image_data = [image_data]
+                    # If we have a system message, append the instruction
+                    if system_message is not None:
+                        system_message += f"\n\n{json_instruction}"
+                    else:
+                        # If no system message exists, create one
+                        system_message = json_instruction
 
-                # Add images to the last user message or create new one
-                last_msg = (
-                    anthropic_messages[-1]
-                    if anthropic_messages
-                    else {"role": "user", "content": []}
-                )
-                if last_msg["role"] != "user":
-                    last_msg = {"role": "user", "content": []}
-                    anthropic_messages.append(last_msg)
+                # Handle image data if present
+                if image_data:
+                    if isinstance(image_data, str):
+                        image_data = [image_data]
 
-                # Convert content to list if it's a string
-                if isinstance(last_msg["content"], str):
-                    last_msg["content"] = [{"type": "text", "text": last_msg["content"]}]
-                elif not isinstance(last_msg["content"], list):
-                    last_msg["content"] = []
+                    # Add images to the last user message or create new one
+                    last_msg = (
+                        anthropic_messages[-1]
+                        if anthropic_messages
+                        else {"role": "user", "content": []}
+                    )
+                    if last_msg["role"] != "user":
+                        last_msg = {"role": "user", "content": []}
+                        anthropic_messages.append(last_msg)
 
-                # Add each image
-                for img in image_data:
-                    if img.startswith(("http://", "https://")):
-                        # For URLs, we need to download and convert to base64
-                        try:
-                            response = requests.get(img)
-                            response.raise_for_status()
-                            image_base64 = base64.b64encode(response.content).decode("utf-8")
+                    # Convert content to list if it's a string
+                    if isinstance(last_msg["content"], str):
+                        last_msg["content"] = [{"type": "text", "text": last_msg["content"]}]
+                    elif not isinstance(last_msg["content"], list):
+                        last_msg["content"] = []
+
+                    # Add each image
+                    for img in image_data:
+                        if img.startswith(("http://", "https://")):
+                            # For URLs, we need to download and convert to base64
+                            try:
+                                response = requests.get(img)
+                                response.raise_for_status()
+                                image_base64 = base64.b64encode(response.content).decode("utf-8")
+                                last_msg["content"].append(
+                                    {
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": "image/jpeg",
+                                            "data": image_base64,
+                                        },
+                                    }
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to process image URL: {str(e)}")
+                                raise
+                        else:
+                            # For base64 data, use it directly
                             last_msg["content"].append(
                                 {
                                     "type": "image",
                                     "source": {
                                         "type": "base64",
                                         "media_type": "image/jpeg",
-                                        "data": image_base64,
+                                        "data": img,
                                     },
                                 }
                             )
+
+                # Log request details
+                logger.debug(
+                    f"[LLM] Anthropic ({model}) Request: {json.dumps({'system_message': system_message, 'messages': anthropic_messages, 'temperature': temperature, 'max_tokens': max_tokens, 'stop_sequences': stop_sequences}, separators=(',', ':'))}"
+                )
+
+                # Handle streaming
+                if stream:
+                    spinner.stop()  # Stop spinner before streaming
+
+                    async def stream_generator():
+                        full_message = ""
+                        logger.debug("Stream started")
+                        try:
+                            response = await client.messages.create(
+                                model=model,
+                                messages=anthropic_messages,
+                                system=system_message,
+                                temperature=temperature,
+                                max_tokens=max_tokens,
+                                stop_sequences=stop_sequences if stop_sequences else None,
+                                stream=True,
+                            )
+                            async for chunk in response:
+                                if chunk.type == "content_block_delta":
+                                    if chunk.delta.type == "text_delta":
+                                        content = chunk.delta.text
+                                        full_message += content
+                                        yield content
+                                elif chunk.type == "message_delta":
+                                    # When a stop_reason is provided, log it without per-chunk verbosity
+                                    if chunk.delta.stop_reason:
+                                        logger.debug(
+                                            f"Message delta stop reason: {chunk.delta.stop_reason}"
+                                        )
+                                elif chunk.type == "error":
+                                    logger.error(f"Stream error: {chunk.error}")
+                                    break
+                            logger.debug("Stream complete")
+                            logger.debug(f"Final message: {full_message}")
+                        except (AnthropicConnectionError, AnthropicTimeoutError) as e:
+                            logger.error(f"Connection error during streaming: {str(e)}", exc_info=True)
+                            yield ""
+                        except AnthropicRateLimitError as e:
+                            logger.error(
+                                f"Rate limit exceeded during streaming: {str(e)}", exc_info=True
+                            )
+                            yield ""
+                        except AnthropicStatusError as e:
+                            logger.error(f"API status error during streaming: {str(e)}", exc_info=True)
+                            yield ""
+                        except AnthropicResponseValidationError as e:
+                            logger.error(
+                                f"Invalid response format during streaming: {str(e)}", exc_info=True
+                            )
+                            yield ""
+                        except ValueError as e:
+                            logger.error(
+                                f"Configuration error during streaming: {str(e)}", exc_info=True
+                            )
+                            yield ""
                         except Exception as e:
-                            logger.error(f"Failed to process image URL: {str(e)}")
-                            raise
-                    else:
-                        # For base64 data, use it directly
-                        last_msg["content"].append(
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": img,
-                                },
-                            }
-                        )
+                            logger.error(
+                                f"An unexpected error occurred during streaming: {e}", exc_info=True
+                            )
+                            yield ""
 
-            # Log request details
-            logger.debug(
-                f"[LLM] Anthropic ({model}) Request: {json.dumps({'system_message': system_message, 'messages': anthropic_messages, 'temperature': temperature, 'max_tokens': max_tokens, 'stop_sequences': stop_sequences}, separators=(',', ':'))}"
-            )
+                    return stream_generator()
 
-            # Handle streaming
-            if stream:
-                spinner.stop()  # Stop spinner before streaming
+                # Non-streaming logic
+                spinner.text = f"Waiting for {model} response..."
+                response = await client.messages.create(
+                    model=model,
+                    messages=anthropic_messages,
+                    system=system_message,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stop_sequences=stop_sequences if stop_sequences else None,
+                )
 
-                async def stream_generator():
-                    full_message = ""
-                    logger.debug("Stream started")
-                    try:
-                        response = await client.messages.create(
-                            model=model,
-                            messages=anthropic_messages,
-                            system=system_message,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            stop_sequences=stop_sequences if stop_sequences else None,
-                            stream=True,
-                        )
-                        async for chunk in response:
-                            if chunk.type == "content_block_delta":
-                                if chunk.delta.type == "text_delta":
-                                    content = chunk.delta.text
-                                    full_message += content
-                                    yield content
-                            elif chunk.type == "message_delta":
-                                # When a stop_reason is provided, log it without per-chunk verbosity
-                                if chunk.delta.stop_reason:
-                                    logger.debug(
-                                        f"Message delta stop reason: {chunk.delta.stop_reason}"
-                                    )
-                            elif chunk.type == "error":
-                                logger.error(f"Stream error: {chunk.error}")
-                                break
-                        logger.debug("Stream complete")
-                        logger.debug(f"Final message: {full_message}")
-                    except (AnthropicConnectionError, AnthropicTimeoutError) as e:
-                        logger.error(f"Connection error during streaming: {str(e)}", exc_info=True)
-                        yield ""
-                    except AnthropicRateLimitError as e:
-                        logger.error(
-                            f"Rate limit exceeded during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except AnthropicStatusError as e:
-                        logger.error(f"API status error during streaming: {str(e)}", exc_info=True)
-                        yield ""
-                    except AnthropicResponseValidationError as e:
-                        logger.error(
-                            f"Invalid response format during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except ValueError as e:
-                        logger.error(
-                            f"Configuration error during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except Exception as e:
-                        logger.error(
-                            f"An unexpected error occurred during streaming: {e}", exc_info=True
-                        )
-                        yield ""
+                content = response.content[0].text if response.content else ""
+                spinner.succeed("Request completed")
+                # For non-JSON responses, keep original formatting but make single line
+                logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
+                return content.strip(), None
 
-                return stream_generator()
+            except AnthropicRateLimitError as e:
+                if attempt < max_retries - 1:  # If not the last attempt
+                    backoff_time = backoff_times[attempt]
+                    spinner.text = f"Rate limit hit, retrying in {backoff_time} seconds... (Attempt {attempt + 1}/{max_retries})"
+                    logger.warning(f"Rate limit exceeded, backing off for {backoff_time} seconds")
+                    await asyncio.sleep(backoff_time)
+                    continue
+                else:
+                    spinner.fail("Rate limit exceeded after all retries")
+                    logger.error(f"Rate limit exceeded after {max_retries} attempts: {str(e)}", exc_info=True)
+                    return "", e
 
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response = await client.messages.create(
-                model=model,
-                messages=anthropic_messages,
-                system=system_message,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stop_sequences=stop_sequences if stop_sequences else None,
-            )
-
-            content = response.content[0].text if response.content else ""
-            spinner.succeed("Request completed")
-            # For non-JSON responses, keep original formatting but make single line
-            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
-            return content.strip(), None
-
-        except (AnthropicConnectionError, AnthropicTimeoutError) as e:
-            spinner.fail("Connection failed")
-            logger.error(f"Connection error: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicRateLimitError as e:
-            spinner.fail("Rate limit exceeded")
-            logger.error(f"Rate limit exceeded: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicStatusError as e:
-            spinner.fail("API Status Error")
-            logger.error(f"API Status Error: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicResponseValidationError as e:
-            spinner.fail("Invalid Response Format")
-            logger.error(f"Invalid response format: {str(e)}", exc_info=True)
-            return "", e
-        except ValueError as e:
-            spinner.fail("Configuration Error")
-            logger.error(f"Configuration error: {str(e)}", exc_info=True)
-            return "", e
-        except Exception as e:
-            spinner.fail("Request failed")
-            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-            return "", e
-        finally:
-            if spinner.spinner_id:  # Check if spinner is still running
-                spinner.stop()
+            except (AnthropicConnectionError, AnthropicTimeoutError) as e:
+                spinner.fail("Connection failed")
+                logger.error(f"Connection error: {str(e)}", exc_info=True)
+                return "", e
+            except AnthropicStatusError as e:
+                spinner.fail("API Status Error")
+                logger.error(f"API Status Error: {str(e)}", exc_info=True)
+                return "", e
+            except AnthropicResponseValidationError as e:
+                spinner.fail("Invalid Response Format")
+                logger.error(f"Invalid response format: {str(e)}", exc_info=True)
+                return "", e
+            except ValueError as e:
+                spinner.fail("Configuration Error")
+                logger.error(f"Configuration error: {str(e)}", exc_info=True)
+                return "", e
+            except Exception as e:
+                spinner.fail("Request failed")
+                logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+                return "", e
+            finally:
+                if spinner.spinner_id:  # Check if spinner is still running
+                    spinner.stop()
 
     @staticmethod
     def custom_model(model_name: str):
@@ -788,11 +814,6 @@ class OpenrouterModels:
         # Get API key
         api_key = config.validate_api_key("OPENROUTER_API_KEY")
 
-        # Handle o1 model message transformations if needed
-        additional_params = None
-        if model.endswith("o1-mini") or model.endswith("o1-preview"):
-            messages = OpenaiModels._transform_o1_messages(messages, require_json_output)
-
         return await OpenAICompatibleProvider.send_request(
             model=model,
             provider_name="OpenRouter",
@@ -804,7 +825,6 @@ class OpenrouterModels:
             require_json_output=require_json_output,
             messages=messages,
             stream=stream,
-            additional_params=additional_params,
         )
 
     @staticmethod
@@ -844,7 +864,22 @@ class OpenrouterModels:
     gpt_4_5_preview = custom_model("openai/gpt-4.5-preview")
     o1_preview = custom_model("openai/o1-preview")
     o1_mini = custom_model("openai/o1-mini")
+    o1 = custom_model("openai/o1")
+    o3_mini = custom_model("openai/o3-mini")
+    o3_mini_high = custom_model("openai/o3-mini-high")
+    o4_mini = custom_model("openai/o4-mini")
+    o4_mini_high = custom_model("openai/o4-mini-high")
+    gpt_4_1 = custom_model("openai/gpt-4.1")
+    gpt_4_1_mini = custom_model("openai/gpt-4.1-mini")
+    gpt_4_1_nano = custom_model("openai/gpt-4.1-nano")
     gemini_flash_1_5 = custom_model("google/gemini-flash-1.5")
+    gemini_flash_1_5_8b = custom_model("google/gemini-flash-1.5-8b")
+    gemini_2_5_pro_preview = custom_model("google/gemini-2.5-pro-preview-03-25")
+    gemini_2_5_flash_preview = custom_model("google/gemini-2.5-flash-preview")
+    grok_3_beta = custom_model("x-ai/grok-3-beta")
+    grok_3_mini_beta = custom_model("x-ai/grok-3-mini-beta")
+    llama_4_maverick = custom_model("meta-llama/llama-4-maverick")
+    sonar_deep_research = custom_model("perplexity/sonar-deep-research")
     llama_3_70b_sonar_32k = custom_model("perplexity/llama-3-sonar-large-32k-chat")
     command_r = custom_model("cohere/command-r-plus")
     nous_hermes_2_mistral_7b_dpo = custom_model("nousresearch/nous-hermes-2-mistral-7b-dpo")
@@ -874,7 +909,7 @@ class OpenrouterModels:
     ministral_8b = custom_model("mistralai/ministral-8b")
     ministral_3b = custom_model("mistralai/ministral-3b")
     llama_3_1_nemotron_70b_instruct = custom_model("nvidia/llama-3.1-nemotron-70b-instruct")
-    gemini_flash_1_5_8b = custom_model("google/gemini-flash-1.5-8b")
+    llama_3_1_nemotron_ultra_253b_v1_free = custom_model("nvidia/llama-3.1-nemotron-ultra-253b-v1:free")
     llama_3_2_3b_instruct = custom_model("meta-llama/llama-3.2-3b-instruct")
 
 
@@ -1379,10 +1414,17 @@ class GeminiModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    # gemini_2_0_flash = custom_model("gemini-2.0-flash")  # Experimental
     gemini_1_5_flash = custom_model("gemini-1.5-flash")
     gemini_1_5_flash_8b = custom_model("gemini-1.5-flash-8b")
     gemini_1_5_pro = custom_model("gemini-1.5-pro")
+    gemini_2_5_flash_preview = custom_model("gemini-2.5-flash-preview-0417")
+    gemini_2_5_flash = custom_model("gemini-2.5-flash")
+    gemini_2_5_pro_preview = custom_model("gemini-2.5-pro-preview-0325")
+    gemini_2_5_pro = custom_model("gemini-2.5-pro")
+    gemini_2_0_pro = custom_model("gemini-2.0-pro")
+    gemini_2_0_flash_lite = custom_model("gemini-2.0-flash-lite")
+    gemini_1_5_flash_lite = custom_model("gemini-1.5-flash-lite")
+    gemini_1_5_pro_latest = custom_model("gemini-1.5-pro-latest")
 
 
 class DeepseekModels:
