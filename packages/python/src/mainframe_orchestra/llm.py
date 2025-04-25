@@ -30,6 +30,8 @@ from anthropic import (
 from anthropic import (
     RateLimitError as AnthropicRateLimitError,
 )
+from anthropic._types import NOT_GIVEN
+from anthropic.types import TextBlock
 from halo import Halo
 from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
@@ -549,14 +551,26 @@ class AnthropicModels:
 
                     # Handle system messages separately
                     if role == "system":
-                        system_message = content  # Store the system message from messages
+                        # Ensure system content is a string
+                        if isinstance(content, str):
+                            system_message = content
+                        else:
+                            logger.warning("System message content must be a string. Ignoring non-string system message.")
+                            system_message = None # Or keep previous if applicable
                     elif role == "user":
+                        # Ensure user content is correctly formatted for Anthropic (list or str)
                         anthropic_messages.append({"role": "user", "content": content})
                     elif role == "assistant":
-                        anthropic_messages.append({"role": "assistant", "content": content})
+                        # Ensure assistant content is correctly formatted (str)
+                        if isinstance(content, str):
+                            anthropic_messages.append({"role": "assistant", "content": content})
+                        else:
+                             logger.warning("Assistant message content must be a string. Skipping non-string assistant message.")
                     elif role == "function":
+                        # Convert function result to string for user message
+                        func_result_str = str(content)
                         anthropic_messages.append(
-                            {"role": "user", "content": f"Function result: {content}"}
+                            {"role": "user", "content": f"Function result: {func_result_str}"}
                         )
 
             # If JSON output is required, add instruction to the system message
@@ -565,7 +579,11 @@ class AnthropicModels:
 
                 # If we have a system message, append the instruction
                 if system_message is not None:
-                    system_message += f"\n\n{json_instruction}"
+                    if isinstance(system_message, str):
+                        system_message += f"\n\n{json_instruction}"
+                    else:
+                        # This case should ideally not happen if system messages are always strings
+                        logger.warning("System message content is not a string, cannot append JSON instruction.")
                 else:
                     # If no system message exists, create one
                     system_message = json_instruction
@@ -641,10 +659,10 @@ class AnthropicModels:
                         response = await client.messages.create(
                             model=model,
                             messages=anthropic_messages,
-                            system=system_message,
+                            system=system_message if isinstance(system_message, str) else NOT_GIVEN,
                             temperature=temperature,
                             max_tokens=max_tokens,
-                            stop_sequences=stop_sequences if stop_sequences else None,
+                            stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
                             stream=True,
                         )
                         async for chunk in response:
@@ -698,13 +716,22 @@ class AnthropicModels:
             response = await client.messages.create(
                 model=model,
                 messages=anthropic_messages,
-                system=system_message,
+                system=system_message if isinstance(system_message, str) else NOT_GIVEN,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                stop_sequences=stop_sequences if stop_sequences else None,
+                stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
             )
 
-            content = response.content[0].text if response.content else ""
+            # Extract content, handling potential ToolUseBlock
+            content = ""
+            if response.content:
+                first_block = response.content[0]
+                if isinstance(first_block, TextBlock):
+                    content = first_block.text
+                else:
+                    # Handle ToolUseBlock or other block types if needed
+                    logger.debug(f"First content block is not text: {type(first_block)}")
+
             spinner.succeed("Request completed")
             # For non-JSON responses, keep original formatting but make single line
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
