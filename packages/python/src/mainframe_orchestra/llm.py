@@ -966,9 +966,13 @@ class OllamaModels:
                 if last_msg:
                     # Append images to existing user message
                     current_content = last_msg["content"]
-                    for i, image in enumerate(image_data, start=1):
-                        current_content += f"\n<image>{image}</image>"
-                    last_msg["content"] = current_content
+                    # Ensure content is a string before appending images for Ollama
+                    if isinstance(current_content, str):
+                        for i, image in enumerate(image_data, start=1):
+                            current_content += f"\n<image>{image}</image>"
+                        last_msg["content"] = current_content
+                    else:
+                        logger.warning("Ollama image handling expects existing text content. Found non-string content, skipping image append.")
                 else:
                     # Create new message with images
                     image_content = "\n".join(f"<image>{img}</image>" for img in image_data)
@@ -1159,8 +1163,7 @@ class TogetheraiModels:
             max_tokens=max_tokens,
             require_json_output=require_json_output,
             messages=messages,
-            stream=stream,
-            additional_params=None,
+            stream=stream
         )
 
     @staticmethod
@@ -1221,8 +1224,7 @@ class GroqModels:
             max_tokens=max_tokens,
             require_json_output=require_json_output,
             messages=messages,
-            stream=stream,
-            additional_params=None,
+            stream=stream
         )
 
     @staticmethod
