@@ -218,7 +218,7 @@ class OpenAICompatibleProvider:
     async def send_request(
         model: str,
         provider_name: str,
-        base_url: str,
+        base_url: Optional[str],
         api_key: str,
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
