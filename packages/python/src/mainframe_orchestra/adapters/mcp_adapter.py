@@ -9,7 +9,7 @@ tools into Orchestra-compatible callables that can be used in Orchestra Tasks.
 
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import Any, Callable, Dict, List, Optional, Set, Literal
+from typing import Any, Callable, Dict, List, Optional, Set, Literal, Awaitable
 import subprocess
 import json
 import time
@@ -21,6 +21,9 @@ from mcp.types import (
 )
 from mcp.client.sse import sse_client
 from ..utils.logging_config import logger
+
+# Type hint for the metadata provider
+MetadataProvider = Callable[[], Awaitable[Dict[str, Any]]]
 
 class MCPOrchestra:
     """
@@ -42,6 +45,7 @@ class MCPOrchestra:
         self.tools: Set[Callable] = set()
         self.server_tools: Dict[str, Set[Callable]] = {}
         self.server_processes: Dict[str, subprocess.Popen] = {}
+        self.server_metadata_providers: Dict[str, MetadataProvider] = {}
         self.credentials = credentials or {}
         logger.debug("Initialized MCPOrchestra adapter")
 
@@ -61,6 +65,7 @@ class MCPOrchestra:
         sse_timeout: float = 5.0,
         sse_read_timeout: float = 300.0,
         credentials_key: Optional[str] = None,
+        metadata_provider: Optional[MetadataProvider] = None,
     ) -> None:
         """
         Connect to an MCP server and load its tools.
@@ -79,6 +84,8 @@ class MCPOrchestra:
             sse_timeout: Timeout for SSE connection establishment (seconds)
             sse_read_timeout: Timeout for SSE event reading (seconds)
             credentials_key: Optional key to use for looking up credentials in self.credentials
+            metadata_provider: An optional async callable that returns a dictionary
+                               of metadata to be sent with each tool call to this specific server.
         """
         logger.debug(f"Connecting to MCP server: {server_name}")
 
@@ -118,9 +125,12 @@ class MCPOrchestra:
             logger.debug(f"Successfully initialized session for server: {server_name}")
 
             # Load tools from this server
-            server_tools = await self._load_tools(session, server_name)
+            server_tools = await self._load_tools(session, server_name, metadata_provider)
             self.server_tools[server_name] = server_tools
             self.tools.update(server_tools)
+            # Store the metadata provider for this server if provided
+            if metadata_provider:
+                self.server_metadata_providers[server_name] = metadata_provider
             logger.debug(f"Loaded {len(server_tools)} tools from server: {server_name}")
 
         else:
@@ -171,18 +181,27 @@ class MCPOrchestra:
             logger.debug(f"Successfully initialized session for server: {server_name}")
 
             # Load tools from this server
-            server_tools = await self._load_tools(session, server_name)
+            server_tools = await self._load_tools(session, server_name, metadata_provider)
             self.server_tools[server_name] = server_tools
             self.tools.update(server_tools)
+            # Store the metadata provider for this server if provided
+            if metadata_provider:
+                self.server_metadata_providers[server_name] = metadata_provider
             logger.debug(f"Loaded {len(server_tools)} tools from server: {server_name}")
 
-    async def _load_tools(self, session: ClientSession, server_name: str) -> Set[Callable]:
+    async def _load_tools(
+        self,
+        session: ClientSession,
+        server_name: str,
+        metadata_provider: Optional[MetadataProvider],
+    ) -> Set[Callable]:
         """
         Load tools from an MCP server and convert them to Orchestra-compatible callables.
 
         Args:
             session: The MCP client session
             server_name: The name of the server (used in tool naming)
+            metadata_provider: The metadata provider function specific to this server connection.
 
         Returns:
             A set of callable functions that can be used with Orchestra
@@ -198,9 +217,12 @@ class MCPOrchestra:
             tool_name = tool.name
 
             # Use a factory to create a function with the correct name and closure
-            def create_tool_function(name=tool_name, sess=session):
+            # Capture the metadata_provider specific to this server connection
+            def create_tool_function(name=tool_name, sess=session, provider=metadata_provider):
                 async def tool_callable(**kwargs):
-                    result = await sess.call_tool(name, kwargs)
+                    metadata = await provider() if provider else None
+                    logger.debug(f"Calling tool {name} with metadata: {metadata}")
+                    result = await sess.call_tool(name, kwargs, metadata=metadata)  # type: ignore[call-arg]
                     return self._process_tool_result(result)
 
                 # Set the function name
@@ -257,58 +279,25 @@ class MCPOrchestra:
         result = {"properties": {}, "required": []}
 
         # Try to access the inputSchema
-        if hasattr(tool, "inputSchema"):
-            schema = tool.inputSchema
-
-            # Handle dictionary-based schema
-            if isinstance(schema, dict):
-                # Get properties
-                if "properties" in schema:
-                    for prop_name, prop_info in schema["properties"].items():
-                        # Handle string representation of JSON
-                        if isinstance(prop_info, str) and prop_info.startswith("{") and prop_info.endswith("}"):
-                            try:
-                                # Try to parse the string as JSON
-                                prop_data = json.loads(prop_info)
-                            except Exception:
-                                prop_data = {"type": "string"}
-                        else:
-                            prop_data = prop_info
-
-                        result["properties"][prop_name] = prop_data
-
-                # Get required fields
-                if "required" in schema:
-                    result["required"] = schema["required"]
-
-            # Handle object-based schema (fallback)
-            elif hasattr(schema, "properties"):
-                for prop_name, prop_info in schema.properties.items():
-                    prop_data = {}
-
-                    # Try to get type
-                    if hasattr(prop_info, "type"):
-                        prop_data["type"] = prop_info.type
-                    elif hasattr(prop_info, "__getitem__"):
+        if isinstance(tool.inputSchema, dict):
+            # Get properties
+            if "properties" in tool.inputSchema:
+                for prop_name, prop_info in tool.inputSchema["properties"].items():
+                    # Handle string representation of JSON
+                    if isinstance(prop_info, str) and prop_info.startswith("{") and prop_info.endswith("}"):
                         try:
-                            prop_data["type"] = prop_info["type"]
-                        except (KeyError, TypeError):
-                            pass
-
-                    # Try to get description
-                    if hasattr(prop_info, "description"):
-                        prop_data["description"] = prop_info.description
-                    elif hasattr(prop_info, "__getitem__"):
-                        try:
-                            prop_data["description"] = prop_info["description"]
-                        except (KeyError, TypeError):
-                            pass
+                            # Try to parse the string as JSON
+                            prop_data = json.loads(prop_info)
+                        except Exception:
+                            prop_data = {"type": "string"}
+                    else:
+                        prop_data = prop_info
 
                     result["properties"][prop_name] = prop_data
 
-                # Try to access required fields
-                if hasattr(schema, "required"):
-                    result["required"] = schema.required
+            # Get required fields
+            if "required" in tool.inputSchema:
+                result["required"] = tool.inputSchema["required"]
 
         return result
 
@@ -421,18 +410,22 @@ class MCPOrchestra:
             self.tools.difference_update(tools_to_remove)
             logger.debug(f"Removed {len(tools_to_remove)} tools associated with {server_name}")
 
-        # Check if the session has a close method
-        if not hasattr(session, 'close'):
-            logger.warning(f"Session for {server_name} does not have a close method")
-            return
+        # Remove associated metadata provider if it exists
+        if server_name in self.server_metadata_providers:
+            self.server_metadata_providers.pop(server_name)
+            logger.debug(f"Removed metadata provider for {server_name}")
 
-        # Close the session directly
-        try:
-            logger.debug(f"Calling close() method on session for {server_name}")
-            await session.close()
-            logger.info(f"Successfully closed session for {server_name}")
-        except Exception as e:
-            logger.error(f"Error closing session for {server_name}: {e}", exc_info=True)
+        # NOTE: We do not explicitly call session.close() here.
+        # The ClientSession is managed by the AsyncExitStack entered in the `connect`
+        # method. Attempting to close it manually here can lead to issues,
+        # including the "Attempted to exit cancel scope in a different task" error,
+        # especially if close_session is called from a different async task context
+        # than the one where `connect` was originally called.
+        # The AsyncExitStack will handle closing the underlying transport
+        # (stdio or sse) when the MCPOrchestra instance's `close` or `__aexit__`
+        # is called. This ensures proper resource cleanup in the correct context.
+        logger.debug(f"Session {server_name} removed from tracking. Actual close deferred to AsyncExitStack.")
+
 
         # Also terminate the server process if we started it
         if server_name in self.server_processes:
