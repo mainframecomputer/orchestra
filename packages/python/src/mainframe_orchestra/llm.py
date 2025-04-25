@@ -1398,10 +1398,12 @@ class GeminiModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    # gemini_2_0_flash = custom_model("gemini-2.0-flash")  # Experimental
     gemini_1_5_flash: ClassVar[Callable] = custom_model("gemini-1.5-flash")
     gemini_1_5_flash_8b: ClassVar[Callable] = custom_model("gemini-1.5-flash-8b")
     gemini_1_5_pro: ClassVar[Callable] = custom_model("gemini-1.5-pro")
+    gemini_2_0_flash: ClassVar[Callable] = custom_model("gemini-2.0-flash")
+    gemini_2_5_flash: ClassVar[Callable] = custom_model("gemini-2.5-flash-preview-04-17")
+    gemini_2_5_pro: ClassVar[Callable] = custom_model("gemini-2.5-pro-exp-03-25")
 
 
 class DeepseekModels:
