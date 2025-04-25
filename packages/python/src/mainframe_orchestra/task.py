@@ -329,9 +329,7 @@ class Task(BaseModel):
                 "context": context,
                 "instruction": instruction,
                 "llm": llm or (agent.llm if agent else None),
-                "tools": tools
-                or getattr(agent, "tools", None)
-                or None,  # Handle missing tools attribute
+                "tools": (tools or set()) | (getattr(agent, "tools", None) or set()),  # Merge tools
                 "image_data": image_data,
                 "temperature": temperature or (agent.temperature if agent else 0.7),
                 "max_tokens": max_tokens or (agent.max_tokens if agent else 4000),
