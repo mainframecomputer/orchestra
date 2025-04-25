@@ -220,9 +220,16 @@ class MCPOrchestra:
             # Capture the metadata_provider specific to this server connection
             def create_tool_function(name=tool_name, sess=session, provider=metadata_provider):
                 async def tool_callable(**kwargs):
-                    metadata = await provider() if provider else None
-                    logger.debug(f"Calling tool {name} with metadata: {metadata}")
-                    result = await sess.call_tool(name, kwargs, metadata=metadata)  # type: ignore[call-arg]
+                    tool_args = kwargs # Start with user-provided arguments
+                    if provider:
+                        metadata_dict = await provider()
+                        if metadata_dict: # Add metadata under "metadata" if provider returned something
+                            if "metadata" not in tool_args:
+                                tool_args["metadata"] = {}
+                            tool_args["metadata"].update(metadata_dict)
+
+                    # Pass the potentially modified args, no separate metadata kwarg
+                    result = await sess.call_tool(name, tool_args)
                     return self._process_tool_result(result)
 
                 # Set the function name
