@@ -8,7 +8,7 @@ import re
 import time
 import requests
 import base64
-from typing import AsyncGenerator, Dict, Iterator, List, Optional, Tuple, Union
+from typing import AsyncGenerator, Dict, Iterator, List, Optional, Tuple, Union, Callable, ClassVar
 
 import google.generativeai as genai
 import ollama
@@ -492,16 +492,16 @@ class OpenaiModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    gpt_4_turbo = custom_model("gpt-4-turbo")
-    gpt_3_5_turbo = custom_model("gpt-3.5-turbo")
-    gpt_4 = custom_model("gpt-4")
-    gpt_4o = custom_model("gpt-4o")
-    gpt_4o_mini = custom_model("gpt-4o-mini")
-    o1_mini = custom_model("o1-mini")
-    o1_preview = custom_model("o1-preview")
-    gpt_4_5_preview = custom_model("gpt-4.5-preview")
-    o4_mini = custom_model("o4-mini")
-    o3 = custom_model("o3")
+    gpt_4_turbo: ClassVar[Callable] = custom_model("gpt-4-turbo")
+    gpt_3_5_turbo: ClassVar[Callable] = custom_model("gpt-3.5-turbo")
+    gpt_4: ClassVar[Callable] = custom_model("gpt-4")
+    gpt_4o: ClassVar[Callable] = custom_model("gpt-4o")
+    gpt_4o_mini: ClassVar[Callable] = custom_model("gpt-4o-mini")
+    o1_mini: ClassVar[Callable] = custom_model("o1-mini")
+    o1_preview: ClassVar[Callable] = custom_model("o1-preview")
+    gpt_4_5_preview: ClassVar[Callable] = custom_model("gpt-4.5-preview")
+    o4_mini: ClassVar[Callable] = custom_model("o4-mini")
+    o3: ClassVar[Callable] = custom_model("o3")
 
 
 class AnthropicModels:
@@ -760,12 +760,12 @@ class AnthropicModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    opus = custom_model("claude-3-opus-latest")
-    sonnet = custom_model("claude-3-sonnet-20240229")
-    haiku = custom_model("claude-3-haiku-20240307")
-    sonnet_3_5 = custom_model("claude-3-5-sonnet-latest")
-    haiku_3_5 = custom_model("claude-3-5-haiku-latest")
-    sonnet_3_7 = custom_model("claude-3-7-sonnet-latest")
+    opus: ClassVar[Callable] = custom_model("claude-3-opus-latest")
+    sonnet: ClassVar[Callable] = custom_model("claude-3-sonnet-20240229")
+    haiku: ClassVar[Callable] = custom_model("claude-3-haiku-20240307")
+    sonnet_3_5: ClassVar[Callable] = custom_model("claude-3-5-sonnet-latest")
+    haiku_3_5: ClassVar[Callable] = custom_model("claude-3-5-haiku-latest")
+    sonnet_3_7: ClassVar[Callable] = custom_model("claude-3-7-sonnet-latest")
 
 
 class OpenrouterModels:
@@ -849,52 +849,52 @@ class OpenrouterModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    haiku = custom_model("anthropic/claude-3-haiku")
-    haiku_3_5 = custom_model("anthropic/claude-3.5-haiku")
-    sonnet = custom_model("anthropic/claude-3-sonnet")
-    sonnet_3_5 = custom_model("anthropic/claude-3.5-sonnet")
-    sonnet_3_7 = custom_model("anthropic/claude-3.7-sonnet")
-    opus = custom_model("anthropic/claude-3-opus")
-    gpt_3_5_turbo = custom_model("openai/gpt-3.5-turbo")
-    gpt_4_turbo = custom_model("openai/gpt-4-turbo")
-    gpt_4 = custom_model("openai/gpt-4")
-    gpt_4o = custom_model("openai/gpt-4o")
-    gpt_4o_mini = custom_model("openai/gpt-4o-mini")
-    gpt_4_5_preview = custom_model("openai/gpt-4.5-preview")
-    o1_preview = custom_model("openai/o1-preview")
-    o1_mini = custom_model("openai/o1-mini")
-    gemini_flash_1_5 = custom_model("google/gemini-flash-1.5")
-    llama_3_70b_sonar_32k = custom_model("perplexity/llama-3-sonar-large-32k-chat")
-    command_r = custom_model("cohere/command-r-plus")
-    nous_hermes_2_mistral_7b_dpo = custom_model("nousresearch/nous-hermes-2-mistral-7b-dpo")
-    nous_hermes_2_mixtral_8x7b_dpo = custom_model("nousresearch/nous-hermes-2-mixtral-8x7b-dpo")
-    nous_hermes_yi_34b = custom_model("nousresearch/nous-hermes-yi-34b")
-    qwen_2_72b = custom_model("qwen/qwen-2-72b-instruct")
-    mistral_7b = custom_model("mistralai/mistral-7b-instruct")
-    mistral_7b_nitro = custom_model("mistralai/mistral-7b-instruct:nitro")
-    mixtral_8x7b_instruct = custom_model("mistralai/mixtral-8x7b-instruct")
-    mixtral_8x7b_instruct_nitro = custom_model("mistralai/mixtral-8x7b-instruct:nitro")
-    mixtral_8x22b_instruct = custom_model("mistralai/mixtral-8x22b-instruct")
-    wizardlm_2_8x22b = custom_model("microsoft/wizardlm-2-8x22b")
-    neural_chat_7b = custom_model("intel/neural-chat-7b")
-    gemma_7b_it = custom_model("google/gemma-7b-it")
-    gemini_pro = custom_model("google/gemini-pro")
-    llama_3_8b_instruct = custom_model("meta-llama/llama-3-8b-instruct")
-    llama_3_70b_instruct = custom_model("meta-llama/llama-3-70b-instruct")
-    llama_3_70b_instruct_nitro = custom_model("meta-llama/llama-3-70b-instruct:nitro")
-    llama_3_8b_instruct_nitro = custom_model("meta-llama/llama-3-8b-instruct:nitro")
-    dbrx_132b_instruct = custom_model("databricks/dbrx-instruct")
-    deepseek_coder = custom_model("deepseek/deepseek-coder")
-    llama_3_1_70b_instruct = custom_model("meta-llama/llama-3.1-70b-instruct")
-    llama_3_1_8b_instruct = custom_model("meta-llama/llama-3.1-8b-instruct")
-    llama_3_1_405b_instruct = custom_model("meta-llama/llama-3.1-405b-instruct")
-    qwen_2_5_coder_32b_instruct = custom_model("qwen/qwen-2.5-coder-32b-instruct")
-    claude_3_5_haiku = custom_model("anthropic/claude-3-5-haiku")
-    ministral_8b = custom_model("mistralai/ministral-8b")
-    ministral_3b = custom_model("mistralai/ministral-3b")
-    llama_3_1_nemotron_70b_instruct = custom_model("nvidia/llama-3.1-nemotron-70b-instruct")
-    gemini_flash_1_5_8b = custom_model("google/gemini-flash-1.5-8b")
-    llama_3_2_3b_instruct = custom_model("meta-llama/llama-3.2-3b-instruct")
+    haiku: ClassVar[Callable] = custom_model("anthropic/claude-3-haiku")
+    haiku_3_5: ClassVar[Callable] = custom_model("anthropic/claude-3.5-haiku")
+    sonnet: ClassVar[Callable] = custom_model("anthropic/claude-3-sonnet")
+    sonnet_3_5: ClassVar[Callable] = custom_model("anthropic/claude-3.5-sonnet")
+    sonnet_3_7: ClassVar[Callable] = custom_model("anthropic/claude-3.7-sonnet")
+    opus: ClassVar[Callable] = custom_model("anthropic/claude-3-opus")
+    gpt_3_5_turbo: ClassVar[Callable] = custom_model("openai/gpt-3.5-turbo")
+    gpt_4_turbo: ClassVar[Callable] = custom_model("openai/gpt-4-turbo")
+    gpt_4: ClassVar[Callable] = custom_model("openai/gpt-4")
+    gpt_4o: ClassVar[Callable] = custom_model("openai/gpt-4o")
+    gpt_4o_mini: ClassVar[Callable] = custom_model("openai/gpt-4o-mini")
+    gpt_4_5_preview: ClassVar[Callable] = custom_model("openai/gpt-4.5-preview")
+    o1_preview: ClassVar[Callable] = custom_model("openai/o1-preview")
+    o1_mini: ClassVar[Callable] = custom_model("openai/o1-mini")
+    gemini_flash_1_5: ClassVar[Callable] = custom_model("google/gemini-flash-1.5")
+    llama_3_70b_sonar_32k: ClassVar[Callable] = custom_model("perplexity/llama-3-sonar-large-32k-chat")
+    command_r: ClassVar[Callable] = custom_model("cohere/command-r-plus")
+    nous_hermes_2_mistral_7b_dpo: ClassVar[Callable] = custom_model("nousresearch/nous-hermes-2-mistral-7b-dpo")
+    nous_hermes_2_mixtral_8x7b_dpo: ClassVar[Callable] = custom_model("nousresearch/nous-hermes-2-mixtral-8x7b-dpo")
+    nous_hermes_yi_34b: ClassVar[Callable] = custom_model("nousresearch/nous-hermes-yi-34b")
+    qwen_2_72b: ClassVar[Callable] = custom_model("qwen/qwen-2-72b-instruct")
+    mistral_7b: ClassVar[Callable] = custom_model("mistralai/mistral-7b-instruct")
+    mistral_7b_nitro: ClassVar[Callable] = custom_model("mistralai/mistral-7b-instruct:nitro")
+    mixtral_8x7b_instruct: ClassVar[Callable] = custom_model("mistralai/mixtral-8x7b-instruct")
+    mixtral_8x7b_instruct_nitro: ClassVar[Callable] = custom_model("mistralai/mixtral-8x7b-instruct:nitro")
+    mixtral_8x22b_instruct: ClassVar[Callable] = custom_model("mistralai/mixtral-8x22b-instruct")
+    wizardlm_2_8x22b: ClassVar[Callable] = custom_model("microsoft/wizardlm-2-8x22b")
+    neural_chat_7b: ClassVar[Callable] = custom_model("intel/neural-chat-7b")
+    gemma_7b_it: ClassVar[Callable] = custom_model("google/gemma-7b-it")
+    gemini_pro: ClassVar[Callable] = custom_model("google/gemini-pro")
+    llama_3_8b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3-8b-instruct")
+    llama_3_70b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3-70b-instruct")
+    llama_3_70b_instruct_nitro: ClassVar[Callable] = custom_model("meta-llama/llama-3-70b-instruct:nitro")
+    llama_3_8b_instruct_nitro: ClassVar[Callable] = custom_model("meta-llama/llama-3-8b-instruct:nitro")
+    dbrx_132b_instruct: ClassVar[Callable] = custom_model("databricks/dbrx-instruct")
+    deepseek_coder: ClassVar[Callable] = custom_model("deepseek/deepseek-coder")
+    llama_3_1_70b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3.1-70b-instruct")
+    llama_3_1_8b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3.1-8b-instruct")
+    llama_3_1_405b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3.1-405b-instruct")
+    qwen_2_5_coder_32b_instruct: ClassVar[Callable] = custom_model("qwen/qwen-2.5-coder-32b-instruct")
+    claude_3_5_haiku: ClassVar[Callable] = custom_model("anthropic/claude-3-5-haiku")
+    ministral_8b: ClassVar[Callable] = custom_model("mistralai/ministral-8b")
+    ministral_3b: ClassVar[Callable] = custom_model("mistralai/ministral-3b")
+    llama_3_1_nemotron_70b_instruct: ClassVar[Callable] = custom_model("nvidia/llama-3.1-nemotron-70b-instruct")
+    gemini_flash_1_5_8b: ClassVar[Callable] = custom_model("google/gemini-flash-1.5-8b")
+    llama_3_2_3b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3.2-3b-instruct")
 
 
 class OllamaModels:
@@ -1154,7 +1154,7 @@ class TogetheraiModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    meta_llama_3_1_70b_instruct_turbo = custom_model("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo")
+    meta_llama_3_1_70b_instruct_turbo: ClassVar[Callable] = custom_model("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo")
 
 
 class GroqModels:
@@ -1216,14 +1216,14 @@ class GroqModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    gemma2_9b_it = custom_model("gemma2-9b-it")
-    llama_3_3_70b_versatile = custom_model("llama-3.3-70b-versatile")
-    llama_3_1_8b_instant = custom_model("llama-3.1-8b-instant")
-    llama_guard_3_8b = custom_model("llama-guard-3-8b")
-    llama3_70b_8192 = custom_model("llama3-70b-8192")
-    llama3_8b_8192 = custom_model("llama3-8b-8192")
-    mixtral_8x7b_32768 = custom_model("mixtral-8x7b-32768")
-    llama_3_2_vision = custom_model("llama-3.2-11b-vision-preview")
+    gemma2_9b_it: ClassVar[Callable] = custom_model("gemma2-9b-it")
+    llama_3_3_70b_versatile: ClassVar[Callable] = custom_model("llama-3.3-70b-versatile")
+    llama_3_1_8b_instant: ClassVar[Callable] = custom_model("llama-3.1-8b-instant")
+    llama_guard_3_8b: ClassVar[Callable] = custom_model("llama-guard-3-8b")
+    llama3_70b_8192: ClassVar[Callable] = custom_model("llama3-70b-8192")
+    llama3_8b_8192: ClassVar[Callable] = custom_model("llama3-8b-8192")
+    mixtral_8x7b_32768: ClassVar[Callable] = custom_model("mixtral-8x7b-32768")
+    llama_3_2_vision: ClassVar[Callable] = custom_model("llama-3.2-11b-vision-preview")
 
 
 class GeminiModels:
@@ -1399,9 +1399,9 @@ class GeminiModels:
 
     # Model-specific methods using custom_model
     # gemini_2_0_flash = custom_model("gemini-2.0-flash")  # Experimental
-    gemini_1_5_flash = custom_model("gemini-1.5-flash")
-    gemini_1_5_flash_8b = custom_model("gemini-1.5-flash-8b")
-    gemini_1_5_pro = custom_model("gemini-1.5-pro")
+    gemini_1_5_flash: ClassVar[Callable] = custom_model("gemini-1.5-flash")
+    gemini_1_5_flash_8b: ClassVar[Callable] = custom_model("gemini-1.5-flash-8b")
+    gemini_1_5_pro: ClassVar[Callable] = custom_model("gemini-1.5-pro")
 
 
 class DeepseekModels:
@@ -1506,8 +1506,8 @@ class DeepseekModels:
         return wrapper
 
     # Model-specific methods
-    chat = custom_model("deepseek-chat")
-    reasoner = custom_model("deepseek-reasoner")
+    chat: ClassVar[Callable] = custom_model("deepseek-chat")
+    reasoner: ClassVar[Callable] = custom_model("deepseek-reasoner")
 
 
 class HuggingFaceModels:
@@ -1692,5 +1692,5 @@ class HuggingFaceModels:
         return wrapper
 
     # Add commonly used models
-    qwen2_5_coder = custom_model("Qwen/Qwen2.5-Coder-32B-Instruct")
-    meta_llama_3_8b = custom_model("meta-llama/Meta-Llama-3-8B-Instruct")
+    qwen2_5_coder: ClassVar[Callable] = custom_model("Qwen/Qwen2.5-Coder-32B-Instruct")
+    meta_llama_3_8b: ClassVar[Callable] = custom_model("meta-llama/Meta-Llama-3-8B-Instruct")
