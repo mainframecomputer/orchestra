@@ -8,7 +8,7 @@ import re
 import time
 import requests
 import base64
-from typing import AsyncGenerator, Dict, Iterator, List, Optional, Tuple, Union, Callable, ClassVar
+from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union, Callable, ClassVar, Any
 
 import google.generativeai as genai
 import ollama
@@ -54,6 +54,7 @@ from openai import (
 from openai import (
     RateLimitError as OpenAIRateLimitError,
 )
+from openai.types.responses import ResponseTextDeltaEvent
 
 from .utils.braintrust_utils import wrap_openai
 from .utils.parse_json_response import parse_json_response
@@ -78,6 +79,13 @@ except ImportError:
             self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
             self.DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
             self.HF_TOKEN = os.getenv("HF_TOKEN")
+
+        def validate_api_key(self, key_name: str) -> str:
+            """Retrieves API key and raises error if missing."""
+            api_key = getattr(self, key_name, None)
+            if not api_key:
+                raise ValueError(f"{key_name} not found in environment variables.")
+            return api_key
 
     config = EnvConfig()
 
@@ -214,9 +222,9 @@ class OpenAICompatibleProvider:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False
-    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """Sends a request to an OpenAI-compatible API provider"""
         try:
             # Process image data if present
@@ -229,11 +237,10 @@ class OpenAICompatibleProvider:
             spinner.start()
 
             # Initialize client
-            client_kwargs = {"api_key": api_key}
             if base_url:
-                client_kwargs["base_url"] = base_url
-
-            client = wrap_openai(AsyncOpenAI(**client_kwargs))
+                client = wrap_openai(AsyncOpenAI(api_key=api_key, base_url=base_url))
+            else:
+                client = wrap_openai(AsyncOpenAI(api_key=api_key))
 
             # Separate system message (instructions) from input messages
             system_instructions = None
@@ -290,13 +297,11 @@ class OpenAICompatibleProvider:
                             stream=True
                         )
                         async for chunk in response_stream:
-                            # Adapt based on actual chunk structure from responses API stream
-                            # Example: Assuming chunk might have delta.text
-                            if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text') and chunk.delta.text:
-                                content = chunk.delta.text
-                                full_message += content
-                                yield content
-                            # Add handling for other chunk types if necessary
+                            if isinstance(chunk, ResponseTextDeltaEvent):
+                                if chunk.delta:
+                                    content = chunk.delta
+                                    full_message += content
+                                    yield content
 
                         logger.debug("Stream complete (Responses API)")
                         logger.debug(f"Full message: {full_message}")
@@ -405,10 +410,10 @@ class OpenaiModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
         base_url: Optional[str] = None,
-    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
         Sends a request to an OpenAI model asynchronously and handles retries.
         """
@@ -474,10 +479,10 @@ class OpenaiModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
             base_url: Optional[str] = None,
-        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await OpenaiModels.send_openai_request(
                 model=model_name,
                 image_data=image_data,
@@ -516,7 +521,7 @@ class AnthropicModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stop_sequences: Optional[List[str]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
@@ -740,7 +745,7 @@ class AnthropicModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stop_sequences: Optional[List[str]] = None,
             stream: bool = False,  # Add stream parameter
         ) -> Union[
@@ -781,7 +786,7 @@ class OpenrouterModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -833,9 +838,9 @@ class OpenrouterModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
-        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await OpenrouterModels.send_openrouter_request(
                 model=model_name,
                 image_data=image_data,
@@ -901,7 +906,7 @@ class OllamaModels:
     @staticmethod
     async def call_ollama(
         model: str,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
         max_tokens: int = 4000,
@@ -1049,7 +1054,7 @@ class OllamaModels:
     @staticmethod
     def custom_model(model_name: str):
         async def wrapper(
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             image_data: Union[List[str], str, None] = None,
             temperature: float = 0.7,
             max_tokens: int = 4000,
@@ -1084,7 +1089,7 @@ class TogetheraiModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -1138,7 +1143,7 @@ class TogetheraiModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await TogetheraiModels.send_together_request(
@@ -1170,9 +1175,9 @@ class GroqModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
-    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
         Sends a request to Groq models.
         """
@@ -1200,9 +1205,9 @@ class GroqModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
-        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await GroqModels.send_groq_request(
                 model=model_name,
                 image_data=image_data,
@@ -1238,7 +1243,7 @@ class GeminiModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -1365,7 +1370,7 @@ class GeminiModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             if stream:
@@ -1455,7 +1460,7 @@ class DeepseekModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -1492,7 +1497,7 @@ class DeepseekModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await DeepseekModels.send_deepseek_request(
@@ -1524,7 +1529,7 @@ class HuggingFaceModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -1678,7 +1683,7 @@ class HuggingFaceModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await HuggingFaceModels.send_huggingface_request(
