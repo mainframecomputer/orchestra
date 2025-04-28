@@ -141,7 +141,7 @@ class Conduct:
                                 message = {
                                     "type": "delegation_result",
                                     "content": result.get("content", ""),
-                                    "agent_id": target_agent.agent_id,
+                                    "agent_id": target_agent.agent_id if target_agent else None,
                                     "conducted_task_id": task.task_id,
                                     "timestamp": current_time,
                                 }
@@ -164,13 +164,16 @@ class Conduct:
                                         else "function"
                                     )
 
-                                result.update(
-                                    {
-                                        "agent_id": target_agent.agent_id,
-                                        "conducted_task_id": task.task_id,
-                                        "timestamp": current_time,
-                                    }
-                                )
+                                # Prepare update data, adding agent_id safely
+                                update_data = {
+                                    "conducted_task_id": task.task_id,
+                                    "timestamp": current_time,
+                                }
+                                if target_agent:
+                                    update_data["agent_id"] = target_agent.agent_id
+
+                                result.update(update_data)
+
                                 if kwargs.get("callback"):
                                     # Ensure result is JSON serializable
                                     result_to_send = json.loads(json.dumps(result, default=str))
@@ -196,7 +199,7 @@ class Conduct:
                                 event_queue.put(result)
                                 sent_messages.add(msg_signature)
 
-                    task_result = await Task.create(
+                    task_result = await Task.create_async(
                         agent=target_agent,
                         instruction=instruction_text,
                         callback=nested_callback,
@@ -331,7 +334,7 @@ Your plan should outline:
                 ]
 
                 try:
-                    task_result = await Task.create(
+                    task_result = await Task.create_async(
                         agent=composer_agent,
                         instruction=f"Create a detailed plan for achieving this goal: {goal}",
                         callback=kwargs.get("callback"),
