@@ -32,6 +32,7 @@ from anthropic import (
 )
 from anthropic._types import NOT_GIVEN
 from anthropic.types import TextBlock
+from google.ai.generativelanguage_v1beta.types import Content, Part
 from halo import Halo
 from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
@@ -1274,9 +1275,10 @@ class GeminiModels:
         require_json_output: bool = False,
         messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
-    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+    ) -> AsyncGenerator[Union[str, Tuple[str, Optional[Exception]]], None]:
         """
         Sends a request to Gemini using the chat format.
+        Yields: string chunks if stream=True, OR a single Tuple(result, error) if stream=False.
         """
         spinner = Halo(text=f"Sending request to Gemini ({model})...", spinner="dots")
 
@@ -1329,25 +1331,35 @@ class GeminiModels:
 
             if stream:
                 spinner.stop()
-                last_user_message = next(
-                    (msg["content"] for msg in reversed(messages) if msg["role"] == "user"), ""
-                )
+                # Handle None case for messages before reversing
+                last_user_message_content = ""
+                if messages is not None:
+                    last_user_message_content = next(
+                        (msg["content"] for msg in reversed(messages) if msg["role"] == "user"),
+                        "" # Default if no user message found
+                    )
+                # Ensure content is string for Gemini stream start
+                if not isinstance(last_user_message_content, str):
+                    logger.warning("Cannot start Gemini stream with non-string content. Using empty string.")
+                    last_user_message_content = ""
+
                 full_message = ""
                 logger.debug("Stream started")
 
                 try:
-                    response = model_instance.generate_content(last_user_message, stream=True)
+                    response = model_instance.generate_content(last_user_message_content, stream=True)
                     for chunk in response:
                         if chunk.text:
                             content = chunk.text
                             full_message += content
-                            yield content
+                            yield content # Yields str
 
                     logger.debug("Stream complete")
                     logger.debug(f"Full message: {full_message}")
                 except Exception as e:
                     logger.error(f"Gemini streaming error: {str(e)}")
-                    yield ""
+                    yield "", e # Yields Tuple[str, Exception]
+
             else:
                 # Non-streaming: Use chat format
                 chat = model_instance.start_chat(history=[])
@@ -1368,10 +1380,20 @@ class GeminiModels:
                             else:
                                 response = chat.send_message(content)
                         elif role == "assistant":
-                            chat.history.append({"role": "model", "parts": [content]})
+                            # Ensure content is a string before adding to Gemini history
+                            if isinstance(content, str):
+                                part = Part(text=content)
+                                history_entry = Content(role="model", parts=[part])
+                                chat.history.append(history_entry)
+                            else:
+                                logger.warning("Cannot add non-string assistant content to Gemini chat history.")
 
-                # Get the final response
-                text_output = response.text.strip()
+                text_output = ""
+                if 'response' in locals() and hasattr(response, 'text'):
+                    text_output = response.text.strip()
+                else:
+                    logger.warning("Gemini response object not found or lacks text attribute.")
+
                 spinner.succeed("Request completed")
 
                 # Print response
@@ -1380,20 +1402,21 @@ class GeminiModels:
                 if require_json_output:
                     try:
                         parsed = json.loads(text_output)
-                        yield json.dumps(parsed)
+                        yield json.dumps(parsed), None # Yields Tuple[str, None]
                     except ValueError as ve:
                         logger.error(f"Failed to parse Gemini response as JSON: {ve}")
-                        yield ""
+                        yield "", ve # Yields Tuple[str, ValueError]
                 else:
-                    yield text_output
+                    yield text_output, None # Yields Tuple[str, None]
 
         except Exception as e:
             spinner.fail("Gemini request failed")
             logger.error(f"Unexpected error for Gemini model ({model}): {str(e)}")
-            yield ""
+            yield "", e # Yields Tuple[str, Exception]
 
     @staticmethod
     def custom_model(model_name: str):
+        # This wrapper returns EITHER an AsyncGenerator OR a Tuple
         async def wrapper(
             image_data: Union[List[str], str, None] = None,
             temperature: float = 0.7,
@@ -1402,33 +1425,59 @@ class GeminiModels:
             messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
-            if stream:
-                # For streaming, simply return the asynchronous generator.
-                return GeminiModels.send_gemini_request(
-                    model=model_name,
-                    image_data=image_data,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    require_json_output=require_json_output,
-                    messages=messages,
-                    stream=True,
-                )
-            else:
-                # For non-streaming, consume the entire async generator,
-                # accumulating all yielded chunks into a single string.
-                result = ""
-                async for chunk in GeminiModels.send_gemini_request(
-                    model=model_name,
-                    image_data=image_data,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    require_json_output=require_json_output,
-                    messages=messages,
-                    stream=False,
-                ):
-                    result += chunk
-                return result, None
+             # send_gemini_request ALWAYS returns an async generator object
+            result_generator = GeminiModels.send_gemini_request(
+                 model=model_name,
+                 image_data=image_data,
+                 temperature=temperature,
+                 max_tokens=max_tokens,
+                 require_json_output=require_json_output,
+                 messages=messages,
+                 stream=stream,
+            )
 
+            if stream:
+                # If streaming is requested, return the generator directly.
+                # We need to ensure it yields only 'str' as per the wrapper's return hint.
+                async def stream_wrapper() -> AsyncGenerator[str, None]:
+                    try:
+                        async for item in result_generator:
+                            if isinstance(item, str):
+                                yield item
+                            elif isinstance(item, tuple): # Handle tuple yielded on error during stream
+                                content, error = item
+                                logger.error(f"Error yielded during Gemini stream: {error}")
+                                yield f"Error during stream: {error}" # Yield error as string
+                            else:
+                                logger.warning(f"Unexpected type yielded during Gemini stream: {type(item)}")
+                                yield f"Unexpected stream item type: {type(item)}"
+                    except Exception as e:
+                         logger.error(f"Exception iterating Gemini stream wrapper: {e}", exc_info=True)
+                         yield f"Error iterating stream: {e}"
+                return stream_wrapper()
+            else:
+                # If not streaming, consume the single Tuple item from the generator
+                try:
+                    # The non-streaming path yields a single tuple: (content, error)
+                    async for item in result_generator:
+                         if isinstance(item, tuple) and len(item) == 2:
+                             content, error = item
+                             if isinstance(content, str) and (error is None or isinstance(error, Exception)):
+                                 return item # Return the tuple directly
+                             else:
+                                 logger.error(f"Unexpected item structure in tuple from non-streaming Gemini generator: ({type(content)}, {type(error)})")
+                                 return "", Exception("Unexpected tuple structure from Gemini generator")
+                         else:
+                             # This case should ideally not happen in non-streaming mode
+                             logger.error(f"Unexpected item type yielded from non-streaming Gemini generator: {type(item)}")
+                             return "", Exception("Unexpected item type from non-streaming Gemini")
+
+                    # If the generator finishes without yielding (e.g., immediate exception before first yield)
+                    logger.error("Non-streaming Gemini generator finished unexpectedly without yielding a result.")
+                    return "", Exception("Gemini generator finished unexpectedly")
+                except Exception as e:
+                     logger.error(f"Error consuming non-streaming Gemini generator: {e}", exc_info=True)
+                     return "", e
         return wrapper
 
     # Model-specific methods using custom_model
