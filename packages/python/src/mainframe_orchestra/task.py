@@ -168,77 +168,58 @@ class Task(BaseModel):
         callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         event_queue: Optional[Any] = None,
         messages: Optional[List[Dict[str, str]]] = None,
-        stream: bool = False,
         initial_response: bool = False,
         tool_summaries: bool = False,
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Union[str, Exception, AsyncIterator[str]]:
-        """Create and execute a task. Handles both sync and async execution."""
+        """Create and execute a task synchronously.
 
+        Raises:
+            RuntimeError: If called from within an already running asyncio event loop.
+        """
         try:
-            # Create new event loop if none exists
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
+                # Prevent calling sync method from async context
+                raise RuntimeError(
+                    "Task.create() cannot be called from a running event loop. Use Task.create_async() instead."
+                )
             except RuntimeError:
+                # No running loop, okay to create one for sync execution
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                logger.info("[Task.create] Created new event loop")
+                logger.info("[Task.create] Created new event loop for synchronous execution")
 
-            # If we're already in an async context, return the coroutine
-            if loop.is_running():
-                return cls._create_async(
-                    agent,
-                    role,
-                    goal,
-                    attributes,
-                    context,
-                    instruction,
-                    llm,
-                    tools,
-                    image_data,
-                    temperature,
-                    max_tokens,
-                    require_json_output,
-                    callback,
-                    event_queue,
-                    messages,
-                    stream,
-                    initial_response,
-                    tool_summaries=tool_summaries,
-                    pre_execute=pre_execute,
-                )
-
-            # Otherwise, run it synchronously
+            # Run the async version synchronously
             result = loop.run_until_complete(
-                cls._create_async(
-                    agent,
-                    role,
-                    goal,
-                    attributes,
-                    context,
-                    instruction,
-                    llm,
-                    tools,
-                    image_data,
-                    temperature,
-                    max_tokens,
-                    require_json_output,
-                    callback,
-                    event_queue,
-                    messages,
-                    stream,
-                    initial_response,
+                cls.create_async(
+                    agent=agent,
+                    role=role,
+                    goal=goal,
+                    attributes=attributes,
+                    context=context,
+                    instruction=instruction,
+                    llm=llm,
+                    tools=tools,
+                    image_data=image_data,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    require_json_output=require_json_output,
+                    callback=callback,
+                    event_queue=event_queue,
+                    messages=messages,
+                    initial_response=initial_response,
                     tool_summaries=tool_summaries,
                     pre_execute=pre_execute,
                 )
             )
             return result
         except Exception as e:
-            logger.error(f"[Task.create] Error during task creation: {str(e)}", exc_info=True)
+            logger.error(f"[Task.create] Error during synchronous task creation: {str(e)}", exc_info=True)
             return e
 
     @classmethod
-    async def _create_async(
+    async def create_async(
         cls,
         agent: Optional[Any] = None,
         role: Optional[str] = None,
@@ -287,7 +268,7 @@ class Task(BaseModel):
             tool_summaries: Whether to include tool summaries
 
         Returns:
-            Union[str, AsyncIterator[str]]: Task result
+            Union[str, Exception, AsyncIterator[str]]: Task result or stream
 
         Raises:
             ValueError: If required parameters are missing
@@ -343,6 +324,7 @@ class Task(BaseModel):
                 "pre_execute": pre_execute,
                 "initial_response": initial_response,
                 "tool_summaries": tool_summaries,
+                "thread_id": thread_id
             }
 
             # Validate task data using Pydantic
