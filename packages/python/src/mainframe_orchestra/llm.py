@@ -1873,12 +1873,15 @@ class HuggingFaceModels:
                         )
 
                         for chunk in response:
-                            if hasattr(chunk, 'token') and hasattr(chunk.token, 'text') and chunk.token.text:
-                                content = chunk.token.text
-                                # Clean the content of unwanted tags for each chunk
-                                content = HuggingFaceModels._clean_response_tags(content)
-                                full_message += content
-                                yield content
+                            # Ensure chunk is not a string before trying attribute access
+                            if not isinstance(chunk, str):
+                                token = getattr(chunk, 'token', None)
+                                if token and hasattr(token, 'text') and token.text:
+                                    content = token.text
+                                    # Clean the content of unwanted tags for each chunk
+                                    content = HuggingFaceModels._clean_response_tags(content)
+                                    full_message += content
+                                    yield content
 
                         logger.debug("Stream complete")
                         logger.debug(f"Full message: {full_message}")
