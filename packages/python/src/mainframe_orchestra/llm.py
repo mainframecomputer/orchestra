@@ -8,7 +8,7 @@ import re
 import time
 import requests
 import base64
-from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union, Callable, ClassVar, Any
+from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union, Callable, ClassVar, Any, cast
 
 import google.generativeai as genai
 import ollama
@@ -58,6 +58,7 @@ from openai import (
     RateLimitError as OpenAIRateLimitError,
 )
 from openai.types.responses import ResponseTextDeltaEvent
+from openai.types.chat import ChatCompletionChunk
 
 from .utils.braintrust_utils import wrap_openai
 from .utils.parse_json_response import parse_json_response
@@ -386,6 +387,206 @@ class OpenAICompatibleProvider:
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
+                spinner.stop()
+
+
+class OpenAIChatCompletionsProvider:
+    """
+    Provider class for handling OpenAI-compatible APIs using the chat.completions endpoint.
+    """
+
+    @staticmethod
+    async def send_request(
+        model: str,
+        provider_name: str,
+        base_url: Optional[str],
+        api_key: str,
+        image_data: Union[List[str], str, None] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        require_json_output: bool = False,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
+        stream: bool = False
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+        """Sends a request using client.chat.completions.create"""
+        try:
+            # Use the image preparation logic from the other provider
+            if image_data:
+                image_data = await OpenAICompatibleProvider._prepare_image_data(
+                    image_data, provider_name
+                )
+
+            spinner = Halo(text=f"Sending request to {provider_name} (Chat)...", spinner="dots")
+            spinner.start()
+
+            # Initialize client
+            if base_url:
+                client = wrap_openai(AsyncOpenAI(api_key=api_key, base_url=base_url))
+            else:
+                client = wrap_openai(AsyncOpenAI(api_key=api_key))
+
+            # --- Start: Adapt messages for chat.completions.create ---
+            chat_messages = []
+            if messages:
+                system_prompt = None
+                for i, msg in enumerate(messages):
+                    # Find and store the first system message
+                    if msg["role"] == "system" and system_prompt is None:
+                        if isinstance(msg.get("content"), str):
+                            system_prompt = msg["content"]
+                            chat_messages.append({"role": "system", "content": system_prompt})
+                        else:
+                            logger.warning(f"System prompt content is not a string: {type(msg.get('content'))}. Ignoring.")
+                    # Add user and assistant messages directly
+                    elif msg["role"] in ["user", "assistant"]:
+                        # Ensure content structure is compatible (str or list of blocks)
+                        current_content = msg.get("content")
+                        if isinstance(current_content, (str, list)):
+                            chat_messages.append({"role": msg["role"], "content": current_content})
+                        else:
+                            logger.warning(f"Unsupported content type {type(current_content)} in role {msg['role']}. Converting to string.")
+                            chat_messages.append({"role": msg["role"], "content": str(current_content)})
+
+                    # Ignore other system messages or roles
+                    elif msg["role"] == "system":
+                         logger.warning("Multiple system messages found. Only the first one is used in chat.completions.")
+                    else:
+                         logger.warning(f"Unsupported role '{msg['role']}' ignored for chat.completions.")
+
+            # Append image data to the last user message if necessary
+            if image_data:
+                last_user_msg_index = -1
+                for i in range(len(chat_messages) - 1, -1, -1):
+                    if chat_messages[i]["role"] == "user":
+                        last_user_msg_index = i
+                        break
+
+                if last_user_msg_index != -1:
+                    user_content = chat_messages[last_user_msg_index]["content"]
+                    # Ensure content is a list to append image data
+                    if isinstance(user_content, str):
+                        chat_messages[last_user_msg_index]["content"] = [{"type": "text", "text": user_content}]
+                    elif not isinstance(user_content, list):
+                        logger.error("Cannot add image data: Last user message content is not string or list.")
+                        # Optionally raise an error or handle differently
+                        raise ValueError("Invalid message format for adding images")
+
+                    # Append image(s) - assuming _prepare_image_data provides ready-to-use URLs
+                    images_to_append = [image_data] if isinstance(image_data, str) else image_data
+                    for img_url_data in images_to_append: # Now expecting data URLs
+                         # Ensure img_url_data is a string before appending
+                         if isinstance(img_url_data, str):
+                            chat_messages[last_user_msg_index]["content"].append({"type": "image_url", "image_url": {"url": img_url_data}})
+                         else:
+                             logger.warning(f"Skipping non-string image data: {type(img_url_data)}")
+
+                else:
+                    logger.warning("Image data provided but no user message found to attach it to.")
+            # --- End: Adapt messages --- #
+
+            # --- Start: Prepare request parameters for chat.completions.create ---
+            request_params = {
+                "model": model,
+                "messages": chat_messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": stream,
+            }
+
+            if require_json_output:
+                request_params["response_format"] = { "type": "json_object" }
+                logger.info(f"Requesting JSON object output format for {model}.")
+            # --- End: Prepare request parameters --- #
+
+            log_params = request_params.copy()
+            log_params.pop('stream', None)
+            logger.debug(
+                f"[LLM] {provider_name} ({model}) Request (Chat Completions API): {json.dumps(log_params | {'stream': stream}, separators=(',', ':'))}"
+            )
+
+            if stream:
+                spinner.stop()
+                async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started (Chat Completions API)")
+                    try:
+                        response_stream = await client.chat.completions.create(**request_params)
+                        async for chunk in response_stream:
+                            if isinstance(chunk, ChatCompletionChunk) and chunk.choices:
+                                delta = chunk.choices[0].delta
+                                if delta and delta.content:
+                                    content = delta.content
+                                    full_message += content
+                                    yield content
+                        logger.debug("Stream complete (Chat Completions API)")
+                        logger.debug(f"Full message: {full_message}")
+                    except OpenAIAuthenticationError as e:
+                        logger.error(f"Authentication failed: {str(e)}")
+                        yield f"Error: Authentication Failed ({provider_name})"
+                    except OpenAIBadRequestError as e:
+                        logger.error(f"Invalid request parameters: {str(e)}")
+                        yield f"Error: Invalid Request ({str(e)})"
+                    except (OpenAIConnectionError, OpenAITimeoutError) as e:
+                        logger.error(f"Connection error: {str(e)}")
+                        yield f"Error: Connection Error ({str(e)})"
+                    except OpenAIRateLimitError as e:
+                        logger.error(f"Rate limit exceeded: {str(e)}")
+                        yield f"Error: Rate Limit Exceeded ({str(e)})"
+                    except OpenAIAPIError as e:
+                        logger.error(f"{provider_name} API error: {str(e)}")
+                        yield f"Error: API Error ({provider_name} - {str(e)})"
+                    except Exception as e:
+                        logger.error(f"Unexpected streaming error: {e}", exc_info=True)
+                        yield f"Error: Unexpected Streaming Error ({str(e)})"
+                return stream_generator()
+
+            # Non-streaming logic
+            spinner.text = f"Waiting for {model} response (Chat Completions API)..."
+            response = await client.chat.completions.create(**request_params)
+            content = ""
+            if response.choices and response.choices[0].message:
+                content = response.choices[0].message.content or ""
+            spinner.succeed(f"Request completed ({provider_name} - Chat Completions API)")
+
+            if require_json_output and content:
+                try:
+                    # Validate it's JSON, but return the raw string
+                    parse_json_response(content)
+                    logger.debug(f"[LLM] API Response (JSON Validated): {content[:100]}...") # Log truncated
+                    return content, None
+                except ValueError as e:
+                    logger.error(f"LLM returned non-JSON despite json_object request: {content}. Error: {e}")
+                    return content, ValueError("LLM returned non-JSON despite json_object format request")
+
+            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
+            return content.strip(), None
+
+        except OpenAIAuthenticationError as e:
+            spinner.fail("Authentication failed")
+            logger.error(f"Authentication failed: {str(e)}")
+            return "", e
+        except OpenAIBadRequestError as e:
+            spinner.fail("Invalid request")
+            logger.error(f"Invalid request parameters: {str(e)}")
+            return "", e
+        except (OpenAIConnectionError, OpenAITimeoutError) as e:
+            spinner.fail("Connection failed")
+            logger.error(f"Connection error: {str(e)}")
+            return "", e
+        except OpenAIRateLimitError as e:
+            spinner.fail("Rate limit exceeded")
+            logger.error(f"Rate limit exceeded: {str(e)}")
+            return "", e
+        except OpenAIAPIError as e:
+            spinner.fail("API Error")
+            logger.error(f"{provider_name} API error: {str(e)}")
+            return "", e
+        except Exception as e:
+            spinner.fail("Request failed")
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+            return "", e
+        finally:
+            if spinner.spinner_id:
                 spinner.stop()
 
 
@@ -846,7 +1047,7 @@ class OpenrouterModels:
         # Get API key
         api_key = config.validate_api_key("OPENROUTER_API_KEY")
 
-        return await OpenAICompatibleProvider.send_request(
+        return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="OpenRouter",
             base_url="https://openrouter.ai/api/v1",
@@ -1154,7 +1355,7 @@ class TogetheraiModels:
                 content.append({"type": "text", "text": last_user_msg["content"]})
                 last_user_msg["content"] = content
 
-        return await OpenAICompatibleProvider.send_request(
+        return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="Together AI",
             base_url="https://api.together.xyz/v1",
@@ -1215,7 +1416,7 @@ class GroqModels:
         # Get API key
         api_key = config.validate_api_key("GROQ_API_KEY")
 
-        return await OpenAICompatibleProvider.send_request(
+        return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="Groq",
             base_url="https://api.groq.com/openai/v1",
@@ -1496,7 +1697,8 @@ class DeepseekModels:
 
     @staticmethod
     def _preprocess_reasoner_messages(
-        messages: List[Dict[str, str]], require_json_output: bool = False
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]],
+        require_json_output: bool = False
     ) -> List[Dict[str, str]]:
         """
         Transform messages specifically for the DeepSeek Reasoner model.
@@ -1507,23 +1709,32 @@ class DeepseekModels:
             )
 
         if not messages:
-            return messages
+            return []
 
         processed = []
         current_role = None
         current_content = []
 
         for msg in messages:
+            # Ensure content is string before processing
+            content_val = msg.get("content")
+            if not isinstance(content_val, str):
+                 # Handle non-string content (e.g., log, convert, skip)
+                 logger.warning(f"Skipping non-string content in message for DeepSeek reasoner: {content_val}")
+                 content_str = str(content_val) # Convert to string as fallback
+            else:
+                 content_str = content_val
+
             if msg["role"] == current_role:
                 # Same role as previous message, append content
-                current_content.append(msg["content"])
+                current_content.append(content_str)
             else:
                 # Different role, flush previous message if exists
                 if current_role:
                     processed.append({"role": current_role, "content": "\n".join(current_content)})
                 # Start new message
                 current_role = msg["role"]
-                current_content = [msg["content"]]
+                current_content = [content_str]
 
         if current_role:
             processed.append({"role": current_role, "content": "\n".join(current_content)})
@@ -1548,13 +1759,14 @@ class DeepseekModels:
         api_key = config.validate_api_key("DEEPSEEK_API_KEY")
 
         # Apply model-specific transformations
-        additional_params = None
         if model == "deepseek-reasoner":
-            messages = cls._preprocess_reasoner_messages(messages, require_json_output)
+            processed_messages = cls._preprocess_reasoner_messages(messages, require_json_output)
+            # Correct cast syntax and ensure it points to the new provider
+            messages = cast(Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]], processed_messages)
             # Disable JSON output for reasoner model
             require_json_output = False
 
-        return await OpenAICompatibleProvider.send_request(
+        return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="DeepSeek",
             base_url="https://api.deepseek.com/v1",
@@ -1565,7 +1777,6 @@ class DeepseekModels:
             require_json_output=require_json_output,
             messages=messages,
             stream=stream,
-            additional_params=additional_params,
         )
 
     @staticmethod
@@ -1662,7 +1873,7 @@ class HuggingFaceModels:
                         )
 
                         for chunk in response:
-                            if chunk.token.text:
+                            if hasattr(chunk, 'token') and hasattr(chunk.token, 'text') and chunk.token.text:
                                 content = chunk.token.text
                                 # Clean the content of unwanted tags for each chunk
                                 content = HuggingFaceModels._clean_response_tags(content)
