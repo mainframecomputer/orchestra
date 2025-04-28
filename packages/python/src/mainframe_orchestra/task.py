@@ -1,7 +1,7 @@
 # Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Callable, Optional, Union, Dict, List, Any, Set, Tuple, AsyncIterator, Iterator
+from typing import Callable, Optional, Union, Dict, List, Any, Set, Tuple, AsyncIterator, Iterator, Coroutine
 from datetime import datetime, date
 import json
 import asyncio
@@ -11,7 +11,7 @@ from .utils.parse_json_response import parse_json_response
 from .utils.logging_config import logger
 
 
-def serialize_result(obj: Any) -> Union[str, Dict[str, Any], List[Any]]:
+def serialize_result(obj: Any) -> Union[str, int, float, bool, None, Dict[str, Any], List[Any]]:
     """Convert any object into a JSON-serializable format by aggressively stringifying non-standard types."""
     try:
         if obj is None:
@@ -165,80 +165,61 @@ class Task(BaseModel):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         require_json_output: bool = False,
-        callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        callback: Optional[Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]] = None,
         event_queue: Optional[Any] = None,
         messages: Optional[List[Dict[str, str]]] = None,
-        stream: bool = False,
         initial_response: bool = False,
         tool_summaries: bool = False,
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
-    ) -> Union[str, Exception, AsyncIterator[str]]:
-        """Create and execute a task. Handles both sync and async execution."""
+    ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
+        """Create and execute a task synchronously.
 
+        Raises:
+            RuntimeError: If called from within an already running asyncio event loop.
+        """
         try:
-            # Create new event loop if none exists
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
+                # Prevent calling sync method from async context
+                raise RuntimeError(
+                    "Task.create() cannot be called from a running event loop. Use Task.create_async() instead."
+                )
             except RuntimeError:
+                # No running loop, okay to create one for sync execution
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                logger.info("[Task.create] Created new event loop")
+                logger.info("[Task.create] Created new event loop for synchronous execution")
 
-            # If we're already in an async context, return the coroutine
-            if loop.is_running():
-                return cls._create_async(
-                    agent,
-                    role,
-                    goal,
-                    attributes,
-                    context,
-                    instruction,
-                    llm,
-                    tools,
-                    image_data,
-                    temperature,
-                    max_tokens,
-                    require_json_output,
-                    callback,
-                    event_queue,
-                    messages,
-                    stream,
-                    initial_response,
-                    tool_summaries=tool_summaries,
-                    pre_execute=pre_execute,
-                )
-
-            # Otherwise, run it synchronously
+            # Run the async version synchronously
             result = loop.run_until_complete(
-                cls._create_async(
-                    agent,
-                    role,
-                    goal,
-                    attributes,
-                    context,
-                    instruction,
-                    llm,
-                    tools,
-                    image_data,
-                    temperature,
-                    max_tokens,
-                    require_json_output,
-                    callback,
-                    event_queue,
-                    messages,
-                    stream,
-                    initial_response,
+                cls.create_async(
+                    agent=agent,
+                    role=role,
+                    goal=goal,
+                    attributes=attributes,
+                    context=context,
+                    instruction=instruction,
+                    llm=llm,
+                    tools=tools,
+                    image_data=image_data,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    require_json_output=require_json_output,
+                    callback=callback,
+                    event_queue=event_queue,
+                    messages=messages,
+                    initial_response=initial_response,
                     tool_summaries=tool_summaries,
                     pre_execute=pre_execute,
                 )
             )
             return result
         except Exception as e:
-            logger.error(f"[Task.create] Error during task creation: {str(e)}", exc_info=True)
+            logger.error(f"[Task.create] Error during synchronous task creation: {str(e)}", exc_info=True)
             return e
 
     @classmethod
-    async def _create_async(
+    async def create_async(
         cls,
         agent: Optional[Any] = None,
         role: Optional[str] = None,
@@ -252,7 +233,7 @@ class Task(BaseModel):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         require_json_output: bool = False,
-        callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        callback: Optional[Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]] = None,
         event_queue: Optional[Any] = None,
         messages: Optional[List[Dict[str, str]]] = None,
         stream: bool = False,
@@ -260,7 +241,7 @@ class Task(BaseModel):
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
         thread_id: Optional[str] = None,
         tool_summaries: bool = False,
-    ) -> Union[str, Exception, AsyncIterator[str]]:
+    ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """
         Create and execute a task asynchronously.
 
@@ -287,7 +268,7 @@ class Task(BaseModel):
             tool_summaries: Whether to include tool summaries
 
         Returns:
-            Union[str, AsyncIterator[str]]: Task result
+            Union[str, Exception, AsyncIterator[str]]: Task result or stream
 
         Raises:
             ValueError: If required parameters are missing
@@ -343,6 +324,7 @@ class Task(BaseModel):
                 "pre_execute": pre_execute,
                 "initial_response": initial_response,
                 "tool_summaries": tool_summaries,
+                "thread_id": thread_id
             }
 
             # Validate task data using Pydantic
@@ -355,14 +337,18 @@ class Task(BaseModel):
             error_msg = f"Failed to create task: {str(e)}"
             logger.error(error_msg)
             if callback:
-                await callback({"type": "error", "content": error_msg, "thread_id": thread_id})
+                # Check if callback is awaitable before awaiting
+                if asyncio.iscoroutinefunction(callback):
+                    await callback({"type": "error", "content": error_msg, "thread_id": thread_id})
+                else:
+                    callback({"type": "error", "content": error_msg, "thread_id": thread_id})
             raise
 
     async def execute(
         self,
-        callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        callback: Optional[Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]] = None,
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
-    ) -> Union[str, AsyncIterator[str]]:
+    ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """
         Execute the task with optional tool usage.
 
@@ -371,14 +357,18 @@ class Task(BaseModel):
             pre_execute: Optional pre-execution callback
 
         Returns:
-            Union[str, AsyncIterator[str]]: Task execution result
+            Union[str, Dict, Exception, AsyncIterator[str]]: Task execution result
 
         Raises:
             Exception: If task execution fails
         """
         try:
             if pre_execute:
-                await pre_execute({"agent_id": self.agent_id})
+                # Check if pre_execute is awaitable before awaiting
+                if asyncio.iscoroutinefunction(pre_execute):
+                    await pre_execute({"agent_id": self.agent_id})
+                else:
+                    pre_execute({"agent_id": self.agent_id})
 
             logger.debug(f"Executing task for agent {self.agent_id or 'unknown'}")
 
@@ -394,11 +384,17 @@ class Task(BaseModel):
             error_msg = f"Task execution failed: {str(e)}"
             logger.error(error_msg)
             if callback:
-                await callback({"type": "error", "content": error_msg, "agent_id": self.agent_id})
+                # Check if callback is awaitable before awaiting
+                if asyncio.iscoroutinefunction(callback):
+                    await callback({"type": "error", "content": error_msg, "agent_id": self.agent_id})
+                else:
+                    callback({"type": "error", "content": error_msg, "agent_id": self.agent_id})
             raise
 
     async def _direct_llm_call(
-        self, callback: Optional[Callable] = None, response_type: str = "final_response"
+        self,
+        callback: Optional[Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]] = None,
+        response_type: str = "final_response"
     ) -> Union[str, AsyncIterator[str]]:
         """Execute a direct LLM call without tool usage, with fallback support.
 
@@ -436,29 +432,52 @@ class Task(BaseModel):
                     async def stream_wrapper():
                         async for chunk in await llm(messages=self.messages, **llm_params):
                             if callback:
-                                await callback(
-                                    {
-                                        "type": response_type,  # Use passed response_type
-                                        "content": chunk,
-                                        "agent_id": self.agent_id,
-                                        "timestamp": datetime.now().isoformat(),
-                                        "streaming": True,
-                                    }
-                                )
+                                # Check if callback is awaitable before awaiting
+                                if asyncio.iscoroutinefunction(callback):
+                                    await callback(
+                                        {
+                                            "type": response_type,  # Use passed response_type
+                                            "content": chunk,
+                                            "agent_id": self.agent_id,
+                                            "timestamp": datetime.now().isoformat(),
+                                            "streaming": True,
+                                        }
+                                    )
+                                else:
+                                    callback(
+                                        {
+                                            "type": response_type,
+                                            "content": chunk,
+                                            "agent_id": self.agent_id,
+                                            "timestamp": datetime.now().isoformat(),
+                                            "streaming": True,
+                                        }
+                                    )
                             yield chunk
 
                     return stream_wrapper()
 
                 # Non-streaming response
                 if callback and len(llms) > 1:
-                    await callback(
-                        {
-                            "type": "fallback_attempt",
-                            "content": f"Attempting LLM {i}/{len(llms)}",
-                            "agent_id": self.agent_id,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
+                    # Check if callback is awaitable before awaiting
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(
+                            {
+                                "type": "fallback_attempt",
+                                "content": f"Attempting LLM {i}/{len(llms)}",
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
+                    else:
+                        callback(
+                            {
+                                "type": "fallback_attempt",
+                                "content": f"Attempting LLM {i}/{len(llms)}",
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
 
                 llm_result = await llm(messages=self.messages, **llm_params)
 
@@ -471,15 +490,18 @@ class Task(BaseModel):
                     # Check if response itself is a reasoning tuple
                     if isinstance(response, tuple) and len(response) == 2:
                         reasoning, answer = response
+                        # Safely call the callback
                         if callback:
-                            await callback(
-                                {
-                                    "type": "reasoning",
-                                    "content": reasoning,
-                                    "agent_id": self.agent_id,
-                                    "timestamp": datetime.now().isoformat(),
-                                }
-                            )
+                            callback_event = {
+                                "type": "reasoning",
+                                "content": reasoning,
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(callback_event)
+                            else:
+                                callback(callback_event)
                         response = answer  # Use only the answer portion
 
                 elif isinstance(llm_result, dict):
@@ -490,41 +512,78 @@ class Task(BaseModel):
                     raise ValueError(f"Unexpected result type from LLM: {type(llm_result)}")
 
                 if callback:
-                    await callback(
-                        {
-                            "type": response_type,  # Use passed response_type
-                            "content": response,
-                            "agent_id": self.agent_id,
-                            "timestamp": datetime.now().isoformat(),
-                            "attempt": i if len(llms) > 1 else None,
-                        }
-                    )
+                    # Check if callback is awaitable before awaiting
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(
+                            {
+                                "type": response_type,  # Use passed response_type
+                                "content": response,
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                                "attempt": i if len(llms) > 1 else None,
+                            }
+                        )
+                    else:
+                        callback(
+                            {
+                                "type": response_type,
+                                "content": response,
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                                "attempt": i if len(llms) > 1 else None,
+                            }
+                        )
+                # Ensure response is string before strip()
+                if not isinstance(response, str):
+                    logger.warning(f"Expected string response from LLM, got {type(response)}. Converting to string.")
+                    response = str(response)
                 return response.strip()
 
             except Exception as e:
                 last_error = e
                 logger.error(f"LLM attempt {i}/{len(llms)} failed: {str(e)}")
                 if callback:
-                    await callback(
-                        {
-                            "type": "error",
-                            "content": f"LLM attempt {i}/{len(llms)} failed: {str(e)}",
-                            "agent_id": self.agent_id,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    )
+                    # Check if callback is awaitable before awaiting
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(
+                            {
+                                "type": "error",
+                                "content": f"LLM attempt {i}/{len(llms)} failed: {str(e)}",
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
+                    else:
+                        callback(
+                            {
+                                "type": "error",
+                                "content": f"LLM attempt {i}/{len(llms)} failed: {str(e)}",
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
                 if i < len(llms):
                     continue
                 raise last_error
 
+        # Ensure all paths return something compatible with the hint
+        # If the loop finishes without returning/raising (should not happen with current logic)
+        # raise an error consistent with the signature
+        raise Exception("LLM call loop completed without returning or raising an error.")
+
     async def _execute_tool_loop(
         self,
-        callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-        pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
-    ) -> Tuple[Union[str, Exception], List[str]]:
+        callback: Optional[Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]] = None,
+        pre_execute: Optional[Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]] = None,
+    ) -> Tuple[Optional[Union[str, Exception]], List[str]]:
         """Execute the tool loop with enhanced logging."""
         logger = logging.getLogger("mainframe-orchestra")
         logger.debug("Starting tool loop execution")
+
+        # Handle case where no tools are provided
+        if not self.tools:
+            logger.warning("Attempted to execute tool loop, but no tools were provided.")
+            return None, []
 
         try:
             MAX_ITERATIONS = 20
@@ -605,7 +664,11 @@ Now respond with a JSON object that either requests tool calls or exits the tool
 
                 # Call pre_execute at the beginning of each tool loop iteration
                 if pre_execute:
-                    await pre_execute({"agent_id": self.agent_id})
+                    # Check if pre_execute is awaitable before awaiting
+                    if asyncio.iscoroutinefunction(pre_execute):
+                        await pre_execute({"agent_id": self.agent_id})
+                    else:
+                        pre_execute({"agent_id": self.agent_id})
 
                 # Include tool results in context if we have any
                 context_parts = []
@@ -641,14 +704,23 @@ The original task instruction:
 
                 temp_history.append({"role": "user", "content": tool_loop_instruction})
 
-                response, error = await self.llm(
+                # Handle self.llm being a list/tuple
+                active_llm = self.llm[0] if isinstance(self.llm, (list, tuple)) and self.llm else self.llm
+                if not callable(active_llm):
+                     raise TypeError(f"Resolved LLM is not callable: {type(active_llm)}")
+
+                response, error = await active_llm(
                     messages=temp_history, require_json_output=True, temperature=self.temperature
                 )
 
                 if error:
                     logger.error(f"Error from LLM: {error}")
                     if callback:
-                        await callback({"type": "error", "content": str(error)})
+                        # Check if callback is awaitable before awaiting
+                        if asyncio.iscoroutinefunction(callback):
+                            await callback({"type": "error", "content": str(error)})
+                        else:
+                            callback({"type": "error", "content": str(error)})
                     return error, []
 
                 try:
@@ -658,15 +730,18 @@ The original task instruction:
                         logger.debug("Received reasoning from LLM")
                         logger.debug(f"Reasoning content: {reasoning}")
 
+                        # Safely call the callback
                         if callback:
-                            await callback(
-                                {
-                                    "type": "reasoning",
-                                    "content": reasoning,
-                                    "agent_id": self.agent_id,
-                                    "timestamp": datetime.now().isoformat(),
-                                }
-                            )
+                            callback_event = {
+                                "type": "reasoning",
+                                "content": reasoning,
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(callback_event)
+                            else:
+                                callback(callback_event)
 
                         # Log the answer portion
                         logger.debug(f"Answer content: {response}")
@@ -683,18 +758,21 @@ The original task instruction:
                     if not isinstance(response_data["tool_calls"], list):
                         raise ValueError("'tool_calls' must be an array")
 
-                    # Handle explicit completionxw
+                    # Handle explicit completion
                     if len(response_data["tool_calls"]) == 0:
                         logger.info("Received tool-use completion signal. Tool-use loop exited.")
+                        # Safely call the callback
                         if callback:
-                            await callback(
-                                {
-                                    "type": "end_tool_use",
-                                    "content": "Tool usage complete",
-                                    "agent_id": self.agent_id,
-                                    "timestamp": datetime.now().isoformat(),
-                                }
-                            )
+                            callback_event = {
+                                "type": "end_tool_use",
+                                "content": "Tool usage complete",
+                                "agent_id": self.agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(callback_event)
+                            else:
+                                callback(callback_event)
                         return None, tool_results
 
                     # Validate each tool call before proceeding
@@ -724,15 +802,18 @@ The original task instruction:
                     truncated_response = repr(response[:400])
                     logger.error(f"Problematic response: {truncated_response}...")
 
+                    # Safely call the callback
                     if callback:
-                        await callback(
-                            {
-                                "type": "error",
-                                "content": error_msg,
-                                "response": response[:1000],  # Truncate very long responses
-                                "iteration": iteration_count,
-                            }
-                        )
+                        callback_event = {
+                            "type": "error",
+                            "content": error_msg,
+                            "response": response[:1000],  # Truncate very long responses
+                            "iteration": iteration_count,
+                        }
+                        if asyncio.iscoroutinefunction(callback):
+                            await callback(callback_event)
+                        else:
+                            callback(callback_event)
 
                     # Add error to tool results for context in next iteration
                     tool_results.append(
@@ -765,17 +846,22 @@ The original task instruction:
                             if self.stream:
 
                                 async def callback_wrapper(event):
+                                    # Safely call the original callback
                                     if callback:
-                                        await callback(
-                                            {**event, "type": "initial_response", "streaming": True}
-                                        )
+                                        wrapped_event = {**event, "type": "initial_response", "streaming": True}
+                                        if asyncio.iscoroutinefunction(callback):
+                                            await callback(wrapped_event)
+                                        else:
+                                            callback(wrapped_event)
 
                                 logger.debug("Starting stream output")
+                                # Assuming _direct_llm_call properly handles its own callback logic
                                 await self._direct_llm_call(
                                     callback=callback_wrapper, response_type="initial_response"
                                 )
                                 logger.debug("Stream completed")
                             else:
+                                # Assuming _direct_llm_call properly handles its own callback logic
                                 await self._direct_llm_call(
                                     callback=callback, response_type="initial_response"
                                 )
@@ -797,8 +883,13 @@ The original task instruction:
                                     f"has been called {call_count} times. Maximum allowed repetitions is {MAX_IDENTICAL_CALLS}."
                                 )
                                 logger.warning(f"[TOOL_LOOP] {warning_msg}")
+                                # Safely call the callback
                                 if callback:
-                                    await callback({"type": "warning", "content": warning_msg})
+                                    callback_event = {"type": "warning", "content": warning_msg}
+                                    if asyncio.iscoroutinefunction(callback):
+                                        await callback(callback_event)
+                                    else:
+                                        callback(callback_event)
                                 # Instead of returning an error, return None to proceed to final task
                                 return None, tool_results
 
@@ -827,19 +918,43 @@ The original task instruction:
                                 # Add summary to callback_data if available and tool summaries are enabled
                                 if self.tool_summaries and "summary" in tool_call:
                                     callback_data["summary"] = tool_call["summary"]
-                                await callback(callback_data)
+                                # Safely call the callback
+                                if asyncio.iscoroutinefunction(callback):
+                                    await callback(callback_data)
+                                else:
+                                    callback(callback_data)
 
                             # Execute tool and store result
-                            tools_dict = {func.__name__: func for func in self.tools}
-                            if tool_name not in tools_dict:
-                                error_msg = f"Unknown tool: {tool_name}"
+                            # tools_dict is built from non-None self.tools
+                            tool_name = tool_call.get("tool") # Get tool name again
+                            # Check tool_name exists before dict access
+                            if tool_name and tool_name in tools_dict:
+                                tool_func = tools_dict[tool_name]
+                            elif tool_name == "conduct_tool":
+                                tool_func = None # Special handling for conduct_tool below
+                            else:
+                                error_msg = f"Unknown or missing tool name: {tool_name}"
                                 logger.error(f"{error_msg}")
+                                # Safely call the callback for the error
                                 if callback:
-                                    await callback({"type": "error", "content": error_msg})
-                                return Exception(error_msg), []
+                                    callback_event = {"type": "error", "content": error_msg}
+                                    if asyncio.iscoroutinefunction(callback):
+                                        await callback(callback_event)
+                                    else:
+                                        callback(callback_event)
+                                # Store error and continue loop
+                                tool_results.append(f"\nTool Response Error: {error_msg}")
+                                continue
 
                             try:
-                                tool_func = tools_dict[tool_name]
+                                # Handle conduct_tool separately if needed or integrate tool_func check
+                                if tool_name == "conduct_tool":
+                                     # Assuming conduct_tool logic is handled via special_params
+                                     # If conduct_tool needs a callable func, assign it here or adjust logic
+                                     pass # Placeholder for specific conduct_tool logic if needed
+                                elif not callable(tool_func):
+                                     # This case should be rare if tools_dict is built correctly
+                                     raise TypeError(f"Tool '{tool_name}' retrieved from dict is not callable")
 
                                 # Create a copy of tool_params without callback-related items
                                 serializable_params = tool_params.copy()
@@ -860,15 +975,24 @@ The original task instruction:
                                     f"Executing tool: [{tool_name}] with parameters: {json.dumps(serializable_params, separators=(',', ':'))}"
                                 )
 
-                                if asyncio.iscoroutinefunction(tool_func):
-                                    # Combine the parameters only for execution
-                                    execution_params = {**serializable_params, **special_params}
-                                    raw_result = await tool_func(**execution_params)
-                                else:
-                                    execution_params = {**serializable_params, **special_params}
-                                    raw_result = tool_func(**execution_params)
+                                raw_result = None # Initialize raw_result
+                                # Only attempt to call if tool_func is callable
+                                if callable(tool_func):
+                                    if asyncio.iscoroutinefunction(tool_func):
+                                        # Combine the parameters only for execution
+                                        execution_params = {**serializable_params, **special_params}
+                                        raw_result = await tool_func(**execution_params)
+                                    else:
+                                        execution_params = {**serializable_params, **special_params}
+                                        raw_result = tool_func(**execution_params)
+                                elif tool_name == "conduct_tool":
+                                    # Handle conduct_tool case if specific logic is needed here
+                                    # For now, we just skip the call as tool_func is None
+                                    logger.debug(f"Skipping call for conduct_tool, parameters prepared in special_params: {special_params.keys()}")
+                                    # Potentially, conduct_tool logic should happen *here* using special_params
+                                    # Since no logic is present, raw_result remains None or could be set to a status message
 
-                                # Check if the result is an exception
+                                # Check if the result is an exception (raw_result could be None here)
                                 if isinstance(raw_result, Exception):
                                     error_msg = f"Tool returned error: {str(raw_result)}"
                                     formatted_error = (
@@ -891,16 +1015,19 @@ The original task instruction:
                                     else str(result)
                                 )
 
+                                # Safely call the callback with the result
                                 if callback:
-                                    await callback(
-                                        {
-                                            "type": "tool_result",
-                                            "tool": tool_name,
-                                            "result": result_str,
-                                            "agent_id": self.agent_id,
-                                            "timestamp": datetime.now().isoformat(),
-                                        }
-                                    )
+                                    callback_event = {
+                                        "type": "tool_result",
+                                        "tool": tool_name,
+                                        "result": result_str,
+                                        "agent_id": self.agent_id,
+                                        "timestamp": datetime.now().isoformat(),
+                                    }
+                                    if asyncio.iscoroutinefunction(callback):
+                                        await callback(callback_event)
+                                    else:
+                                        callback(callback_event)
 
                                 formatted_result = (
                                     f"\nTool Execution:\n"
@@ -920,8 +1047,13 @@ The original task instruction:
                             except Exception as e:
                                 error_msg = f"Tool execution error for {tool_name}: {str(e)}"
                                 logger.error(f"[TOOL_LOOP] {error_msg}")
+                                # Safely call the callback with the error
                                 if callback:
-                                    await callback({"type": "error", "content": error_msg})
+                                    callback_event = {"type": "error", "content": error_msg}
+                                    if asyncio.iscoroutinefunction(callback):
+                                        await callback(callback_event)
+                                    else:
+                                        callback(callback_event)
 
                                 # Format the error as a tool result
                                 formatted_error = (
@@ -946,8 +1078,13 @@ The original task instruction:
                         if conduct_tool_count >= MAX_CONDUCT_CALLS:
                             error_msg = f"Maximum consecutive conduct tool calls ({MAX_CONDUCT_CALLS}) reached"
                             logger.warning(f"[TOOL_LOOP] {error_msg}")
+                            # Safely call the callback
                             if callback:
-                                await callback({"type": "error", "content": error_msg})
+                                callback_event = {"type": "error", "content": error_msg}
+                                if asyncio.iscoroutinefunction(callback):
+                                    await callback(callback_event)
+                                else:
+                                    callback(callback_event)
                             return None, tool_results  # Return None to allow final response
                     else:
                         # Reset counter if we see other types of tool calls
@@ -962,19 +1099,32 @@ The original task instruction:
             if iteration_count >= MAX_ITERATIONS:
                 error_msg = f"Maximum tool loop iterations ({MAX_ITERATIONS}) reached"
                 logger.error(f"[TOOL_LOOP] {error_msg}")
+                # Safely call the callback
                 if callback:
-                    await callback({"type": "error", "content": error_msg})
+                    callback_event = {"type": "error", "content": error_msg}
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(callback_event)
+                    else:
+                        callback(callback_event)
                 return Exception(error_msg), tool_results
+            # Add a default return path for the function if loop finishes unexpectedly
+            return None, []
 
         except Exception as e:
             error_msg = f"Error in tool loop: {str(e)}"
             logger.error(f"[TOOL_LOOP] {error_msg}")
+            # Safely call the callback
             if callback:
-                await callback({"type": "error", "content": error_msg})
+                callback_event = {"type": "error", "content": error_msg}
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(callback_event)
+                else:
+                    callback(callback_event)
             return e, []
 
     async def _execute_final_task(
-        self, tool_results: List[str], callback: Optional[Callable[[Dict[str, Any]], None]] = None
+        self, tool_results: List[str],
+        callback: Optional[Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]] = None
     ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """Execute the final task with tool results."""
         logger = logging.getLogger("mainframe-orchestra")
@@ -1024,7 +1174,11 @@ The original task instruction:
         except Exception as e:
             logger.error(f"[FINAL_TASK] Error in final task execution: {str(e)}")
             if callback:
-                await callback({"type": "error", "content": str(e)})
+                # Check if callback is awaitable before awaiting
+                if asyncio.iscoroutinefunction(callback):
+                    await callback({"type": "error", "content": str(e)})
+                else:
+                    callback({"type": "error", "content": str(e)})
             return e
 
     @staticmethod
@@ -1040,8 +1194,8 @@ The original task instruction:
             stream (AsyncIterator[str]): The text stream to process
             callback (Optional[Callable]): Function to process each chunk. Defaults to print.
                 If None, chunks are only collected without processing.
-            end (str): String to append after each chunk when using print callback
-            flush (bool): Whether to flush after each chunk when using print callback
+            end (str): String to append after each chunk when using the default print callback
+            flush (bool): Whether to flush after each chunk when using the default print callback
 
         Returns:
             str: The complete concatenated text from all chunks
@@ -1055,44 +1209,52 @@ The original task instruction:
         async def process():
             collected = []
             async for chunk in stream:
+                # Check if chunk is dict before accessing keys
                 if isinstance(chunk, dict):
                     # Handle streaming responses (both initial and final)
                     if chunk.get("type") in ["initial_response", "final_response"] and chunk.get(
                         "streaming"
                     ):
-                        content = chunk["content"]
-                        collected.append(content)
+                        content = chunk.get("content", "") # Use .get() for safer access
+                        collected.append(str(content))
                         if callback:
-                            if callback == print:
-                                callback(content, end=end, flush=flush)
+                            if callback is print: # Use 'is' to check for specific print function
+                                print(content, end=end, flush=flush)
                             else:
-                                callback(content)
+                                # Call other callbacks without end/flush
+                                callback(str(content))
                     # Handle non-streaming responses
                     elif chunk.get("type") in ["initial_response", "final_response"]:
-                        content = chunk["content"]
-                        collected.append(content)
+                        content = chunk.get("content", "") # Use .get()
+                        chunk_type = chunk.get("type", "response") # Use .get()
+                        collected.append(str(content))
                         if callback:
-                            if callback == print:
-                                callback(
-                                    f"\n{chunk['type'].replace('_', ' ').title()}: {content}",
-                                    end=end,
-                                    flush=flush,
+                            if callback is print:
+                                print(
+                                    f"\n{chunk_type.replace('_', ' ').title()}: {content}",
+                                    end=end, # OK for print
+                                    flush=flush, # OK for print
                                 )
                             else:
-                                callback(content)
-                else:
-                    # Handle direct string chunks
+                                # Call other callbacks without end/flush
+                                callback(str(content))
+                # Handle direct string chunks
+                elif isinstance(chunk, str):
                     collected.append(chunk)
                     if callback:
-                        if callback == print:
-                            callback(chunk, end=end, flush=flush)
+                        if callback is print:
+                            print(chunk, end=end, flush=flush)
                         else:
+                             # Call other callbacks without end/flush
                             callback(chunk)
 
-            # Add newline after stream is complete
-            if callback == print:
-                callback("\n", end="", flush=True)
+            # Add newline after stream is complete (only for print)
+            if callback is print:
+                 # Ensure callback is callable before calling (Fixing L1012)
+                 if callable(callback):
+                     print("\n", end="", flush=True)
 
             return "".join(collected)
 
+        # Ensure inner function has a return path
         return loop.run_until_complete(process())

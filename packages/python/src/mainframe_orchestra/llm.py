@@ -8,7 +8,7 @@ import re
 import time
 import requests
 import base64
-from typing import AsyncGenerator, Dict, Iterator, List, Optional, Tuple, Union
+from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union, Callable, ClassVar, Any, cast
 
 import google.generativeai as genai
 import ollama
@@ -30,6 +30,9 @@ from anthropic import (
 from anthropic import (
     RateLimitError as AnthropicRateLimitError,
 )
+from anthropic._types import NOT_GIVEN
+from anthropic.types import TextBlock
+from google.ai.generativelanguage_v1beta.types import Content, Part
 from halo import Halo
 from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
@@ -54,6 +57,8 @@ from openai import (
 from openai import (
     RateLimitError as OpenAIRateLimitError,
 )
+from openai.types.responses import ResponseTextDeltaEvent
+from openai.types.chat import ChatCompletionChunk
 
 from .utils.braintrust_utils import wrap_openai
 from .utils.parse_json_response import parse_json_response
@@ -78,6 +83,13 @@ except ImportError:
             self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
             self.DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
             self.HF_TOKEN = os.getenv("HF_TOKEN")
+
+        def validate_api_key(self, key_name: str) -> str:
+            """Retrieves API key and raises error if missing."""
+            api_key = getattr(self, key_name, None)
+            if not api_key:
+                raise ValueError(f"{key_name} not found in environment variables.")
+            return api_key
 
     config = EnvConfig()
 
@@ -208,15 +220,15 @@ class OpenAICompatibleProvider:
     async def send_request(
         model: str,
         provider_name: str,
-        base_url: str,
+        base_url: Optional[str],
         api_key: str,
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False
-    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """Sends a request to an OpenAI-compatible API provider"""
         try:
             # Process image data if present
@@ -229,11 +241,10 @@ class OpenAICompatibleProvider:
             spinner.start()
 
             # Initialize client
-            client_kwargs = {"api_key": api_key}
             if base_url:
-                client_kwargs["base_url"] = base_url
-
-            client = wrap_openai(AsyncOpenAI(**client_kwargs))
+                client = wrap_openai(AsyncOpenAI(api_key=api_key, base_url=base_url))
+            else:
+                client = wrap_openai(AsyncOpenAI(api_key=api_key))
 
             # Separate system message (instructions) from input messages
             system_instructions = None
@@ -290,13 +301,11 @@ class OpenAICompatibleProvider:
                             stream=True
                         )
                         async for chunk in response_stream:
-                            # Adapt based on actual chunk structure from responses API stream
-                            # Example: Assuming chunk might have delta.text
-                            if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text') and chunk.delta.text:
-                                content = chunk.delta.text
-                                full_message += content
-                                yield content
-                            # Add handling for other chunk types if necessary
+                            if isinstance(chunk, ResponseTextDeltaEvent):
+                                if chunk.delta:
+                                    content = chunk.delta
+                                    full_message += content
+                                    yield content
 
                         logger.debug("Stream complete (Responses API)")
                         logger.debug(f"Full message: {full_message}")
@@ -381,6 +390,206 @@ class OpenAICompatibleProvider:
                 spinner.stop()
 
 
+class OpenAIChatCompletionsProvider:
+    """
+    Provider class for handling OpenAI-compatible APIs using the chat.completions endpoint.
+    """
+
+    @staticmethod
+    async def send_request(
+        model: str,
+        provider_name: str,
+        base_url: Optional[str],
+        api_key: str,
+        image_data: Union[List[str], str, None] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        require_json_output: bool = False,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
+        stream: bool = False
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+        """Sends a request using client.chat.completions.create"""
+        try:
+            # Use the image preparation logic from the other provider
+            if image_data:
+                image_data = await OpenAICompatibleProvider._prepare_image_data(
+                    image_data, provider_name
+                )
+
+            spinner = Halo(text=f"Sending request to {provider_name} (Chat)...", spinner="dots")
+            spinner.start()
+
+            # Initialize client
+            if base_url:
+                client = wrap_openai(AsyncOpenAI(api_key=api_key, base_url=base_url))
+            else:
+                client = wrap_openai(AsyncOpenAI(api_key=api_key))
+
+            # --- Start: Adapt messages for chat.completions.create ---
+            chat_messages = []
+            if messages:
+                system_prompt = None
+                for i, msg in enumerate(messages):
+                    # Find and store the first system message
+                    if msg["role"] == "system" and system_prompt is None:
+                        if isinstance(msg.get("content"), str):
+                            system_prompt = msg["content"]
+                            chat_messages.append({"role": "system", "content": system_prompt})
+                        else:
+                            logger.warning(f"System prompt content is not a string: {type(msg.get('content'))}. Ignoring.")
+                    # Add user and assistant messages directly
+                    elif msg["role"] in ["user", "assistant"]:
+                        # Ensure content structure is compatible (str or list of blocks)
+                        current_content = msg.get("content")
+                        if isinstance(current_content, (str, list)):
+                            chat_messages.append({"role": msg["role"], "content": current_content})
+                        else:
+                            logger.warning(f"Unsupported content type {type(current_content)} in role {msg['role']}. Converting to string.")
+                            chat_messages.append({"role": msg["role"], "content": str(current_content)})
+
+                    # Ignore other system messages or roles
+                    elif msg["role"] == "system":
+                         logger.warning("Multiple system messages found. Only the first one is used in chat.completions.")
+                    else:
+                         logger.warning(f"Unsupported role '{msg['role']}' ignored for chat.completions.")
+
+            # Append image data to the last user message if necessary
+            if image_data:
+                last_user_msg_index = -1
+                for i in range(len(chat_messages) - 1, -1, -1):
+                    if chat_messages[i]["role"] == "user":
+                        last_user_msg_index = i
+                        break
+
+                if last_user_msg_index != -1:
+                    user_content = chat_messages[last_user_msg_index]["content"]
+                    # Ensure content is a list to append image data
+                    if isinstance(user_content, str):
+                        chat_messages[last_user_msg_index]["content"] = [{"type": "text", "text": user_content}]
+                    elif not isinstance(user_content, list):
+                        logger.error("Cannot add image data: Last user message content is not string or list.")
+                        # Optionally raise an error or handle differently
+                        raise ValueError("Invalid message format for adding images")
+
+                    # Append image(s) - assuming _prepare_image_data provides ready-to-use URLs
+                    images_to_append = [image_data] if isinstance(image_data, str) else image_data
+                    for img_url_data in images_to_append: # Now expecting data URLs
+                         # Ensure img_url_data is a string before appending
+                         if isinstance(img_url_data, str):
+                            chat_messages[last_user_msg_index]["content"].append({"type": "image_url", "image_url": {"url": img_url_data}})
+                         else:
+                             logger.warning(f"Skipping non-string image data: {type(img_url_data)}")
+
+                else:
+                    logger.warning("Image data provided but no user message found to attach it to.")
+            # --- End: Adapt messages --- #
+
+            # --- Start: Prepare request parameters for chat.completions.create ---
+            request_params = {
+                "model": model,
+                "messages": chat_messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": stream,
+            }
+
+            if require_json_output:
+                request_params["response_format"] = { "type": "json_object" }
+                logger.info(f"Requesting JSON object output format for {model}.")
+            # --- End: Prepare request parameters --- #
+
+            log_params = request_params.copy()
+            log_params.pop('stream', None)
+            logger.debug(
+                f"[LLM] {provider_name} ({model}) Request (Chat Completions API): {json.dumps(log_params | {'stream': stream}, separators=(',', ':'))}"
+            )
+
+            if stream:
+                spinner.stop()
+                async def stream_generator():
+                    full_message = ""
+                    logger.debug("Stream started (Chat Completions API)")
+                    try:
+                        response_stream = await client.chat.completions.create(**request_params)
+                        async for chunk in response_stream:
+                            if isinstance(chunk, ChatCompletionChunk) and chunk.choices:
+                                delta = chunk.choices[0].delta
+                                if delta and delta.content:
+                                    content = delta.content
+                                    full_message += content
+                                    yield content
+                        logger.debug("Stream complete (Chat Completions API)")
+                        logger.debug(f"Full message: {full_message}")
+                    except OpenAIAuthenticationError as e:
+                        logger.error(f"Authentication failed: {str(e)}")
+                        yield f"Error: Authentication Failed ({provider_name})"
+                    except OpenAIBadRequestError as e:
+                        logger.error(f"Invalid request parameters: {str(e)}")
+                        yield f"Error: Invalid Request ({str(e)})"
+                    except (OpenAIConnectionError, OpenAITimeoutError) as e:
+                        logger.error(f"Connection error: {str(e)}")
+                        yield f"Error: Connection Error ({str(e)})"
+                    except OpenAIRateLimitError as e:
+                        logger.error(f"Rate limit exceeded: {str(e)}")
+                        yield f"Error: Rate Limit Exceeded ({str(e)})"
+                    except OpenAIAPIError as e:
+                        logger.error(f"{provider_name} API error: {str(e)}")
+                        yield f"Error: API Error ({provider_name} - {str(e)})"
+                    except Exception as e:
+                        logger.error(f"Unexpected streaming error: {e}", exc_info=True)
+                        yield f"Error: Unexpected Streaming Error ({str(e)})"
+                return stream_generator()
+
+            # Non-streaming logic
+            spinner.text = f"Waiting for {model} response (Chat Completions API)..."
+            response = await client.chat.completions.create(**request_params)
+            content = ""
+            if response.choices and response.choices[0].message:
+                content = response.choices[0].message.content or ""
+            spinner.succeed(f"Request completed ({provider_name} - Chat Completions API)")
+
+            if require_json_output and content:
+                try:
+                    # Validate it's JSON, but return the raw string
+                    parse_json_response(content)
+                    logger.debug(f"[LLM] API Response (JSON Validated): {content[:100]}...") # Log truncated
+                    return content, None
+                except ValueError as e:
+                    logger.error(f"LLM returned non-JSON despite json_object request: {content}. Error: {e}")
+                    return content, ValueError("LLM returned non-JSON despite json_object format request")
+
+            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
+            return content.strip(), None
+
+        except OpenAIAuthenticationError as e:
+            spinner.fail("Authentication failed")
+            logger.error(f"Authentication failed: {str(e)}")
+            return "", e
+        except OpenAIBadRequestError as e:
+            spinner.fail("Invalid request")
+            logger.error(f"Invalid request parameters: {str(e)}")
+            return "", e
+        except (OpenAIConnectionError, OpenAITimeoutError) as e:
+            spinner.fail("Connection failed")
+            logger.error(f"Connection error: {str(e)}")
+            return "", e
+        except OpenAIRateLimitError as e:
+            spinner.fail("Rate limit exceeded")
+            logger.error(f"Rate limit exceeded: {str(e)}")
+            return "", e
+        except OpenAIAPIError as e:
+            spinner.fail("API Error")
+            logger.error(f"{provider_name} API error: {str(e)}")
+            return "", e
+        except Exception as e:
+            spinner.fail("Request failed")
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+            return "", e
+        finally:
+            if spinner.spinner_id:
+                spinner.stop()
+
+
 class OpenaiModels:
     """
     Class containing methods for interacting with OpenAI models.
@@ -405,10 +614,10 @@ class OpenaiModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
         base_url: Optional[str] = None,
-    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
         Sends a request to an OpenAI model asynchronously and handles retries.
         """
@@ -474,10 +683,10 @@ class OpenaiModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
             base_url: Optional[str] = None,
-        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await OpenaiModels.send_openai_request(
                 model=model_name,
                 image_data=image_data,
@@ -492,16 +701,16 @@ class OpenaiModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    gpt_4_turbo = custom_model("gpt-4-turbo")
-    gpt_3_5_turbo = custom_model("gpt-3.5-turbo")
-    gpt_4 = custom_model("gpt-4")
-    gpt_4o = custom_model("gpt-4o")
-    gpt_4o_mini = custom_model("gpt-4o-mini")
-    o1_mini = custom_model("o1-mini")
-    o1_preview = custom_model("o1-preview")
-    gpt_4_5_preview = custom_model("gpt-4.5-preview")
-    o4_mini = custom_model("o4-mini")
-    o3 = custom_model("o3")
+    gpt_4_turbo: ClassVar[Callable] = custom_model("gpt-4-turbo")
+    gpt_3_5_turbo: ClassVar[Callable] = custom_model("gpt-3.5-turbo")
+    gpt_4: ClassVar[Callable] = custom_model("gpt-4")
+    gpt_4o: ClassVar[Callable] = custom_model("gpt-4o")
+    gpt_4o_mini: ClassVar[Callable] = custom_model("gpt-4o-mini")
+    o1_mini: ClassVar[Callable] = custom_model("o1-mini")
+    o1_preview: ClassVar[Callable] = custom_model("o1-preview")
+    gpt_4_5_preview: ClassVar[Callable] = custom_model("gpt-4.5-preview")
+    o4_mini: ClassVar[Callable] = custom_model("o4-mini")
+    o3: ClassVar[Callable] = custom_model("o3")
 
 
 class AnthropicModels:
@@ -516,7 +725,7 @@ class AnthropicModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stop_sequences: Optional[List[str]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
@@ -544,14 +753,26 @@ class AnthropicModels:
 
                     # Handle system messages separately
                     if role == "system":
-                        system_message = content  # Store the system message from messages
+                        # Ensure system content is a string
+                        if isinstance(content, str):
+                            system_message = content
+                        else:
+                            logger.warning("System message content must be a string. Ignoring non-string system message.")
+                            system_message = None # Or keep previous if applicable
                     elif role == "user":
+                        # Ensure user content is correctly formatted for Anthropic (list or str)
                         anthropic_messages.append({"role": "user", "content": content})
                     elif role == "assistant":
-                        anthropic_messages.append({"role": "assistant", "content": content})
+                        # Ensure assistant content is correctly formatted (str)
+                        if isinstance(content, str):
+                            anthropic_messages.append({"role": "assistant", "content": content})
+                        else:
+                             logger.warning("Assistant message content must be a string. Skipping non-string assistant message.")
                     elif role == "function":
+                        # Convert function result to string for user message
+                        func_result_str = str(content)
                         anthropic_messages.append(
-                            {"role": "user", "content": f"Function result: {content}"}
+                            {"role": "user", "content": f"Function result: {func_result_str}"}
                         )
 
             # If JSON output is required, add instruction to the system message
@@ -560,7 +781,11 @@ class AnthropicModels:
 
                 # If we have a system message, append the instruction
                 if system_message is not None:
-                    system_message += f"\n\n{json_instruction}"
+                    if isinstance(system_message, str):
+                        system_message += f"\n\n{json_instruction}"
+                    else:
+                        # This case should ideally not happen if system messages are always strings
+                        logger.warning("System message content is not a string, cannot append JSON instruction.")
                 else:
                     # If no system message exists, create one
                     system_message = json_instruction
@@ -636,10 +861,10 @@ class AnthropicModels:
                         response = await client.messages.create(
                             model=model,
                             messages=anthropic_messages,
-                            system=system_message,
+                            system=system_message if isinstance(system_message, str) else NOT_GIVEN,
                             temperature=temperature,
                             max_tokens=max_tokens,
-                            stop_sequences=stop_sequences if stop_sequences else None,
+                            stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
                             stream=True,
                         )
                         async for chunk in response:
@@ -693,13 +918,22 @@ class AnthropicModels:
             response = await client.messages.create(
                 model=model,
                 messages=anthropic_messages,
-                system=system_message,
+                system=system_message if isinstance(system_message, str) else NOT_GIVEN,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                stop_sequences=stop_sequences if stop_sequences else None,
+                stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
             )
 
-            content = response.content[0].text if response.content else ""
+            # Extract content, handling potential ToolUseBlock
+            content = ""
+            if response.content:
+                first_block = response.content[0]
+                if isinstance(first_block, TextBlock):
+                    content = first_block.text
+                else:
+                    # Handle ToolUseBlock or other block types if needed
+                    logger.debug(f"First content block is not text: {type(first_block)}")
+
             spinner.succeed("Request completed")
             # For non-JSON responses, keep original formatting but make single line
             logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
@@ -740,7 +974,7 @@ class AnthropicModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stop_sequences: Optional[List[str]] = None,
             stream: bool = False,  # Add stream parameter
         ) -> Union[
@@ -760,12 +994,12 @@ class AnthropicModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    opus = custom_model("claude-3-opus-latest")
-    sonnet = custom_model("claude-3-sonnet-20240229")
-    haiku = custom_model("claude-3-haiku-20240307")
-    sonnet_3_5 = custom_model("claude-3-5-sonnet-latest")
-    haiku_3_5 = custom_model("claude-3-5-haiku-latest")
-    sonnet_3_7 = custom_model("claude-3-7-sonnet-latest")
+    opus: ClassVar[Callable] = custom_model("claude-3-opus-latest")
+    sonnet: ClassVar[Callable] = custom_model("claude-3-sonnet-20240229")
+    haiku: ClassVar[Callable] = custom_model("claude-3-haiku-20240307")
+    sonnet_3_5: ClassVar[Callable] = custom_model("claude-3-5-sonnet-latest")
+    haiku_3_5: ClassVar[Callable] = custom_model("claude-3-5-haiku-latest")
+    sonnet_3_7: ClassVar[Callable] = custom_model("claude-3-7-sonnet-latest")
 
 
 class OpenrouterModels:
@@ -781,7 +1015,7 @@ class OpenrouterModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -813,7 +1047,7 @@ class OpenrouterModels:
         # Get API key
         api_key = config.validate_api_key("OPENROUTER_API_KEY")
 
-        return await OpenAICompatibleProvider.send_request(
+        return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="OpenRouter",
             base_url="https://openrouter.ai/api/v1",
@@ -833,9 +1067,9 @@ class OpenrouterModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
-        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await OpenrouterModels.send_openrouter_request(
                 model=model_name,
                 image_data=image_data,
@@ -849,59 +1083,59 @@ class OpenrouterModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    haiku = custom_model("anthropic/claude-3-haiku")
-    haiku_3_5 = custom_model("anthropic/claude-3.5-haiku")
-    sonnet = custom_model("anthropic/claude-3-sonnet")
-    sonnet_3_5 = custom_model("anthropic/claude-3.5-sonnet")
-    sonnet_3_7 = custom_model("anthropic/claude-3.7-sonnet")
-    opus = custom_model("anthropic/claude-3-opus")
-    gpt_3_5_turbo = custom_model("openai/gpt-3.5-turbo")
-    gpt_4_turbo = custom_model("openai/gpt-4-turbo")
-    gpt_4 = custom_model("openai/gpt-4")
-    gpt_4o = custom_model("openai/gpt-4o")
-    gpt_4o_mini = custom_model("openai/gpt-4o-mini")
-    gpt_4_5_preview = custom_model("openai/gpt-4.5-preview")
-    o1_preview = custom_model("openai/o1-preview")
-    o1_mini = custom_model("openai/o1-mini")
-    gemini_flash_1_5 = custom_model("google/gemini-flash-1.5")
-    llama_3_70b_sonar_32k = custom_model("perplexity/llama-3-sonar-large-32k-chat")
-    command_r = custom_model("cohere/command-r-plus")
-    nous_hermes_2_mistral_7b_dpo = custom_model("nousresearch/nous-hermes-2-mistral-7b-dpo")
-    nous_hermes_2_mixtral_8x7b_dpo = custom_model("nousresearch/nous-hermes-2-mixtral-8x7b-dpo")
-    nous_hermes_yi_34b = custom_model("nousresearch/nous-hermes-yi-34b")
-    qwen_2_72b = custom_model("qwen/qwen-2-72b-instruct")
-    mistral_7b = custom_model("mistralai/mistral-7b-instruct")
-    mistral_7b_nitro = custom_model("mistralai/mistral-7b-instruct:nitro")
-    mixtral_8x7b_instruct = custom_model("mistralai/mixtral-8x7b-instruct")
-    mixtral_8x7b_instruct_nitro = custom_model("mistralai/mixtral-8x7b-instruct:nitro")
-    mixtral_8x22b_instruct = custom_model("mistralai/mixtral-8x22b-instruct")
-    wizardlm_2_8x22b = custom_model("microsoft/wizardlm-2-8x22b")
-    neural_chat_7b = custom_model("intel/neural-chat-7b")
-    gemma_7b_it = custom_model("google/gemma-7b-it")
-    gemini_pro = custom_model("google/gemini-pro")
-    llama_3_8b_instruct = custom_model("meta-llama/llama-3-8b-instruct")
-    llama_3_70b_instruct = custom_model("meta-llama/llama-3-70b-instruct")
-    llama_3_70b_instruct_nitro = custom_model("meta-llama/llama-3-70b-instruct:nitro")
-    llama_3_8b_instruct_nitro = custom_model("meta-llama/llama-3-8b-instruct:nitro")
-    dbrx_132b_instruct = custom_model("databricks/dbrx-instruct")
-    deepseek_coder = custom_model("deepseek/deepseek-coder")
-    llama_3_1_70b_instruct = custom_model("meta-llama/llama-3.1-70b-instruct")
-    llama_3_1_8b_instruct = custom_model("meta-llama/llama-3.1-8b-instruct")
-    llama_3_1_405b_instruct = custom_model("meta-llama/llama-3.1-405b-instruct")
-    qwen_2_5_coder_32b_instruct = custom_model("qwen/qwen-2.5-coder-32b-instruct")
-    claude_3_5_haiku = custom_model("anthropic/claude-3-5-haiku")
-    ministral_8b = custom_model("mistralai/ministral-8b")
-    ministral_3b = custom_model("mistralai/ministral-3b")
-    llama_3_1_nemotron_70b_instruct = custom_model("nvidia/llama-3.1-nemotron-70b-instruct")
-    gemini_flash_1_5_8b = custom_model("google/gemini-flash-1.5-8b")
-    llama_3_2_3b_instruct = custom_model("meta-llama/llama-3.2-3b-instruct")
+    haiku: ClassVar[Callable] = custom_model("anthropic/claude-3-haiku")
+    haiku_3_5: ClassVar[Callable] = custom_model("anthropic/claude-3.5-haiku")
+    sonnet: ClassVar[Callable] = custom_model("anthropic/claude-3-sonnet")
+    sonnet_3_5: ClassVar[Callable] = custom_model("anthropic/claude-3.5-sonnet")
+    sonnet_3_7: ClassVar[Callable] = custom_model("anthropic/claude-3.7-sonnet")
+    opus: ClassVar[Callable] = custom_model("anthropic/claude-3-opus")
+    gpt_3_5_turbo: ClassVar[Callable] = custom_model("openai/gpt-3.5-turbo")
+    gpt_4_turbo: ClassVar[Callable] = custom_model("openai/gpt-4-turbo")
+    gpt_4: ClassVar[Callable] = custom_model("openai/gpt-4")
+    gpt_4o: ClassVar[Callable] = custom_model("openai/gpt-4o")
+    gpt_4o_mini: ClassVar[Callable] = custom_model("openai/gpt-4o-mini")
+    gpt_4_5_preview: ClassVar[Callable] = custom_model("openai/gpt-4.5-preview")
+    o1_preview: ClassVar[Callable] = custom_model("openai/o1-preview")
+    o1_mini: ClassVar[Callable] = custom_model("openai/o1-mini")
+    gemini_flash_1_5: ClassVar[Callable] = custom_model("google/gemini-flash-1.5")
+    llama_3_70b_sonar_32k: ClassVar[Callable] = custom_model("perplexity/llama-3-sonar-large-32k-chat")
+    command_r: ClassVar[Callable] = custom_model("cohere/command-r-plus")
+    nous_hermes_2_mistral_7b_dpo: ClassVar[Callable] = custom_model("nousresearch/nous-hermes-2-mistral-7b-dpo")
+    nous_hermes_2_mixtral_8x7b_dpo: ClassVar[Callable] = custom_model("nousresearch/nous-hermes-2-mixtral-8x7b-dpo")
+    nous_hermes_yi_34b: ClassVar[Callable] = custom_model("nousresearch/nous-hermes-yi-34b")
+    qwen_2_72b: ClassVar[Callable] = custom_model("qwen/qwen-2-72b-instruct")
+    mistral_7b: ClassVar[Callable] = custom_model("mistralai/mistral-7b-instruct")
+    mistral_7b_nitro: ClassVar[Callable] = custom_model("mistralai/mistral-7b-instruct:nitro")
+    mixtral_8x7b_instruct: ClassVar[Callable] = custom_model("mistralai/mixtral-8x7b-instruct")
+    mixtral_8x7b_instruct_nitro: ClassVar[Callable] = custom_model("mistralai/mixtral-8x7b-instruct:nitro")
+    mixtral_8x22b_instruct: ClassVar[Callable] = custom_model("mistralai/mixtral-8x22b-instruct")
+    wizardlm_2_8x22b: ClassVar[Callable] = custom_model("microsoft/wizardlm-2-8x22b")
+    neural_chat_7b: ClassVar[Callable] = custom_model("intel/neural-chat-7b")
+    gemma_7b_it: ClassVar[Callable] = custom_model("google/gemma-7b-it")
+    gemini_pro: ClassVar[Callable] = custom_model("google/gemini-pro")
+    llama_3_8b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3-8b-instruct")
+    llama_3_70b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3-70b-instruct")
+    llama_3_70b_instruct_nitro: ClassVar[Callable] = custom_model("meta-llama/llama-3-70b-instruct:nitro")
+    llama_3_8b_instruct_nitro: ClassVar[Callable] = custom_model("meta-llama/llama-3-8b-instruct:nitro")
+    dbrx_132b_instruct: ClassVar[Callable] = custom_model("databricks/dbrx-instruct")
+    deepseek_coder: ClassVar[Callable] = custom_model("deepseek/deepseek-coder")
+    llama_3_1_70b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3.1-70b-instruct")
+    llama_3_1_8b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3.1-8b-instruct")
+    llama_3_1_405b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3.1-405b-instruct")
+    qwen_2_5_coder_32b_instruct: ClassVar[Callable] = custom_model("qwen/qwen-2.5-coder-32b-instruct")
+    claude_3_5_haiku: ClassVar[Callable] = custom_model("anthropic/claude-3-5-haiku")
+    ministral_8b: ClassVar[Callable] = custom_model("mistralai/ministral-8b")
+    ministral_3b: ClassVar[Callable] = custom_model("mistralai/ministral-3b")
+    llama_3_1_nemotron_70b_instruct: ClassVar[Callable] = custom_model("nvidia/llama-3.1-nemotron-70b-instruct")
+    gemini_flash_1_5_8b: ClassVar[Callable] = custom_model("google/gemini-flash-1.5-8b")
+    llama_3_2_3b_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-3.2-3b-instruct")
 
 
 class OllamaModels:
     @staticmethod
     async def call_ollama(
         model: str,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         image_data: Union[List[str], str, None] = None,
         temperature: float = 0.7,
         max_tokens: int = 4000,
@@ -934,9 +1168,13 @@ class OllamaModels:
                 if last_msg:
                     # Append images to existing user message
                     current_content = last_msg["content"]
-                    for i, image in enumerate(image_data, start=1):
-                        current_content += f"\n<image>{image}</image>"
-                    last_msg["content"] = current_content
+                    # Ensure content is a string before appending images for Ollama
+                    if isinstance(current_content, str):
+                        for i, image in enumerate(image_data, start=1):
+                            current_content += f"\n<image>{image}</image>"
+                        last_msg["content"] = current_content
+                    else:
+                        logger.warning("Ollama image handling expects existing text content. Found non-string content, skipping image append.")
                 else:
                     # Create new message with images
                     image_content = "\n".join(f"<image>{img}</image>" for img in image_data)
@@ -1049,7 +1287,7 @@ class OllamaModels:
     @staticmethod
     def custom_model(model_name: str):
         async def wrapper(
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             image_data: Union[List[str], str, None] = None,
             temperature: float = 0.7,
             max_tokens: int = 4000,
@@ -1084,7 +1322,7 @@ class TogetheraiModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -1117,7 +1355,7 @@ class TogetheraiModels:
                 content.append({"type": "text", "text": last_user_msg["content"]})
                 last_user_msg["content"] = content
 
-        return await OpenAICompatibleProvider.send_request(
+        return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="Together AI",
             base_url="https://api.together.xyz/v1",
@@ -1127,8 +1365,7 @@ class TogetheraiModels:
             max_tokens=max_tokens,
             require_json_output=require_json_output,
             messages=messages,
-            stream=stream,
-            additional_params=None,
+            stream=stream
         )
 
     @staticmethod
@@ -1138,7 +1375,7 @@ class TogetheraiModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await TogetheraiModels.send_together_request(
@@ -1154,7 +1391,7 @@ class TogetheraiModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    meta_llama_3_1_70b_instruct_turbo = custom_model("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo")
+    meta_llama_3_1_70b_instruct_turbo: ClassVar[Callable] = custom_model("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo")
 
 
 class GroqModels:
@@ -1170,16 +1407,16 @@ class GroqModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
-    ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
         Sends a request to Groq models.
         """
         # Get API key
         api_key = config.validate_api_key("GROQ_API_KEY")
 
-        return await OpenAICompatibleProvider.send_request(
+        return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="Groq",
             base_url="https://api.groq.com/openai/v1",
@@ -1189,8 +1426,7 @@ class GroqModels:
             max_tokens=max_tokens,
             require_json_output=require_json_output,
             messages=messages,
-            stream=stream,
-            additional_params=None,
+            stream=stream
         )
 
     @staticmethod
@@ -1200,9 +1436,9 @@ class GroqModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
-        ) -> Union[Tuple[str, Optional[Exception]], Iterator[str]]:
+        ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await GroqModels.send_groq_request(
                 model=model_name,
                 image_data=image_data,
@@ -1216,14 +1452,14 @@ class GroqModels:
         return wrapper
 
     # Model-specific methods using custom_model
-    gemma2_9b_it = custom_model("gemma2-9b-it")
-    llama_3_3_70b_versatile = custom_model("llama-3.3-70b-versatile")
-    llama_3_1_8b_instant = custom_model("llama-3.1-8b-instant")
-    llama_guard_3_8b = custom_model("llama-guard-3-8b")
-    llama3_70b_8192 = custom_model("llama3-70b-8192")
-    llama3_8b_8192 = custom_model("llama3-8b-8192")
-    mixtral_8x7b_32768 = custom_model("mixtral-8x7b-32768")
-    llama_3_2_vision = custom_model("llama-3.2-11b-vision-preview")
+    gemma2_9b_it: ClassVar[Callable] = custom_model("gemma2-9b-it")
+    llama_3_3_70b_versatile: ClassVar[Callable] = custom_model("llama-3.3-70b-versatile")
+    llama_3_1_8b_instant: ClassVar[Callable] = custom_model("llama-3.1-8b-instant")
+    llama_guard_3_8b: ClassVar[Callable] = custom_model("llama-guard-3-8b")
+    llama3_70b_8192: ClassVar[Callable] = custom_model("llama3-70b-8192")
+    llama3_8b_8192: ClassVar[Callable] = custom_model("llama3-8b-8192")
+    mixtral_8x7b_32768: ClassVar[Callable] = custom_model("mixtral-8x7b-32768")
+    llama_3_2_vision: ClassVar[Callable] = custom_model("llama-3.2-11b-vision-preview")
 
 
 class GeminiModels:
@@ -1238,11 +1474,12 @@ class GeminiModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
-    ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
+    ) -> AsyncGenerator[Union[str, Tuple[str, Optional[Exception]]], None]:
         """
         Sends a request to Gemini using the chat format.
+        Yields: string chunks if stream=True, OR a single Tuple(result, error) if stream=False.
         """
         spinner = Halo(text=f"Sending request to Gemini ({model})...", spinner="dots")
 
@@ -1295,25 +1532,35 @@ class GeminiModels:
 
             if stream:
                 spinner.stop()
-                last_user_message = next(
-                    (msg["content"] for msg in reversed(messages) if msg["role"] == "user"), ""
-                )
+                # Handle None case for messages before reversing
+                last_user_message_content = ""
+                if messages is not None:
+                    last_user_message_content = next(
+                        (msg["content"] for msg in reversed(messages) if msg["role"] == "user"),
+                        "" # Default if no user message found
+                    )
+                # Ensure content is string for Gemini stream start
+                if not isinstance(last_user_message_content, str):
+                    logger.warning("Cannot start Gemini stream with non-string content. Using empty string.")
+                    last_user_message_content = ""
+
                 full_message = ""
                 logger.debug("Stream started")
 
                 try:
-                    response = model_instance.generate_content(last_user_message, stream=True)
+                    response = model_instance.generate_content(last_user_message_content, stream=True)
                     for chunk in response:
                         if chunk.text:
                             content = chunk.text
                             full_message += content
-                            yield content
+                            yield content # Yields str
 
                     logger.debug("Stream complete")
                     logger.debug(f"Full message: {full_message}")
                 except Exception as e:
                     logger.error(f"Gemini streaming error: {str(e)}")
-                    yield ""
+                    yield "", e # Yields Tuple[str, Exception]
+
             else:
                 # Non-streaming: Use chat format
                 chat = model_instance.start_chat(history=[])
@@ -1334,10 +1581,20 @@ class GeminiModels:
                             else:
                                 response = chat.send_message(content)
                         elif role == "assistant":
-                            chat.history.append({"role": "model", "parts": [content]})
+                            # Ensure content is a string before adding to Gemini history
+                            if isinstance(content, str):
+                                part = Part(text=content)
+                                history_entry = Content(role="model", parts=[part])
+                                chat.history.append(history_entry)
+                            else:
+                                logger.warning("Cannot add non-string assistant content to Gemini chat history.")
 
-                # Get the final response
-                text_output = response.text.strip()
+                text_output = ""
+                if 'response' in locals() and hasattr(response, 'text'):
+                    text_output = response.text.strip()
+                else:
+                    logger.warning("Gemini response object not found or lacks text attribute.")
+
                 spinner.succeed("Request completed")
 
                 # Print response
@@ -1346,62 +1603,91 @@ class GeminiModels:
                 if require_json_output:
                     try:
                         parsed = json.loads(text_output)
-                        yield json.dumps(parsed)
+                        yield json.dumps(parsed), None # Yields Tuple[str, None]
                     except ValueError as ve:
                         logger.error(f"Failed to parse Gemini response as JSON: {ve}")
-                        yield ""
+                        yield "", ve # Yields Tuple[str, ValueError]
                 else:
-                    yield text_output
+                    yield text_output, None # Yields Tuple[str, None]
 
         except Exception as e:
             spinner.fail("Gemini request failed")
             logger.error(f"Unexpected error for Gemini model ({model}): {str(e)}")
-            yield ""
+            yield "", e # Yields Tuple[str, Exception]
 
     @staticmethod
     def custom_model(model_name: str):
+        # This wrapper returns EITHER an AsyncGenerator OR a Tuple
         async def wrapper(
             image_data: Union[List[str], str, None] = None,
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
-            if stream:
-                # For streaming, simply return the asynchronous generator.
-                return GeminiModels.send_gemini_request(
-                    model=model_name,
-                    image_data=image_data,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    require_json_output=require_json_output,
-                    messages=messages,
-                    stream=True,
-                )
-            else:
-                # For non-streaming, consume the entire async generator,
-                # accumulating all yielded chunks into a single string.
-                result = ""
-                async for chunk in GeminiModels.send_gemini_request(
-                    model=model_name,
-                    image_data=image_data,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    require_json_output=require_json_output,
-                    messages=messages,
-                    stream=False,
-                ):
-                    result += chunk
-                return result, None
+             # send_gemini_request ALWAYS returns an async generator object
+            result_generator = GeminiModels.send_gemini_request(
+                 model=model_name,
+                 image_data=image_data,
+                 temperature=temperature,
+                 max_tokens=max_tokens,
+                 require_json_output=require_json_output,
+                 messages=messages,
+                 stream=stream,
+            )
 
+            if stream:
+                # If streaming is requested, return the generator directly.
+                # We need to ensure it yields only 'str' as per the wrapper's return hint.
+                async def stream_wrapper() -> AsyncGenerator[str, None]:
+                    try:
+                        async for item in result_generator:
+                            if isinstance(item, str):
+                                yield item
+                            elif isinstance(item, tuple): # Handle tuple yielded on error during stream
+                                content, error = item
+                                logger.error(f"Error yielded during Gemini stream: {error}")
+                                yield f"Error during stream: {error}" # Yield error as string
+                            else:
+                                logger.warning(f"Unexpected type yielded during Gemini stream: {type(item)}")
+                                yield f"Unexpected stream item type: {type(item)}"
+                    except Exception as e:
+                         logger.error(f"Exception iterating Gemini stream wrapper: {e}", exc_info=True)
+                         yield f"Error iterating stream: {e}"
+                return stream_wrapper()
+            else:
+                # If not streaming, consume the single Tuple item from the generator
+                try:
+                    # The non-streaming path yields a single tuple: (content, error)
+                    async for item in result_generator:
+                         if isinstance(item, tuple) and len(item) == 2:
+                             content, error = item
+                             if isinstance(content, str) and (error is None or isinstance(error, Exception)):
+                                 return item # Return the tuple directly
+                             else:
+                                 logger.error(f"Unexpected item structure in tuple from non-streaming Gemini generator: ({type(content)}, {type(error)})")
+                                 return "", Exception("Unexpected tuple structure from Gemini generator")
+                         else:
+                             # This case should ideally not happen in non-streaming mode
+                             logger.error(f"Unexpected item type yielded from non-streaming Gemini generator: {type(item)}")
+                             return "", Exception("Unexpected item type from non-streaming Gemini")
+
+                    # If the generator finishes without yielding (e.g., immediate exception before first yield)
+                    logger.error("Non-streaming Gemini generator finished unexpectedly without yielding a result.")
+                    return "", Exception("Gemini generator finished unexpectedly")
+                except Exception as e:
+                     logger.error(f"Error consuming non-streaming Gemini generator: {e}", exc_info=True)
+                     return "", e
         return wrapper
 
     # Model-specific methods using custom_model
-    # gemini_2_0_flash = custom_model("gemini-2.0-flash")  # Experimental
-    gemini_1_5_flash = custom_model("gemini-1.5-flash")
-    gemini_1_5_flash_8b = custom_model("gemini-1.5-flash-8b")
-    gemini_1_5_pro = custom_model("gemini-1.5-pro")
+    gemini_1_5_flash: ClassVar[Callable] = custom_model("gemini-1.5-flash")
+    gemini_1_5_flash_8b: ClassVar[Callable] = custom_model("gemini-1.5-flash-8b")
+    gemini_1_5_pro: ClassVar[Callable] = custom_model("gemini-1.5-pro")
+    gemini_2_0_flash: ClassVar[Callable] = custom_model("gemini-2.0-flash")
+    gemini_2_5_flash: ClassVar[Callable] = custom_model("gemini-2.5-flash-preview-04-17")
+    gemini_2_5_pro: ClassVar[Callable] = custom_model("gemini-2.5-pro-exp-03-25")
 
 
 class DeepseekModels:
@@ -1411,7 +1697,8 @@ class DeepseekModels:
 
     @staticmethod
     def _preprocess_reasoner_messages(
-        messages: List[Dict[str, str]], require_json_output: bool = False
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]],
+        require_json_output: bool = False
     ) -> List[Dict[str, str]]:
         """
         Transform messages specifically for the DeepSeek Reasoner model.
@@ -1422,23 +1709,32 @@ class DeepseekModels:
             )
 
         if not messages:
-            return messages
+            return []
 
         processed = []
         current_role = None
         current_content = []
 
         for msg in messages:
+            # Ensure content is string before processing
+            content_val = msg.get("content")
+            if not isinstance(content_val, str):
+                 # Handle non-string content (e.g., log, convert, skip)
+                 logger.warning(f"Skipping non-string content in message for DeepSeek reasoner: {content_val}")
+                 content_str = str(content_val) # Convert to string as fallback
+            else:
+                 content_str = content_val
+
             if msg["role"] == current_role:
                 # Same role as previous message, append content
-                current_content.append(msg["content"])
+                current_content.append(content_str)
             else:
                 # Different role, flush previous message if exists
                 if current_role:
                     processed.append({"role": current_role, "content": "\n".join(current_content)})
                 # Start new message
                 current_role = msg["role"]
-                current_content = [msg["content"]]
+                current_content = [content_str]
 
         if current_role:
             processed.append({"role": current_role, "content": "\n".join(current_content)})
@@ -1453,7 +1749,7 @@ class DeepseekModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -1463,13 +1759,14 @@ class DeepseekModels:
         api_key = config.validate_api_key("DEEPSEEK_API_KEY")
 
         # Apply model-specific transformations
-        additional_params = None
         if model == "deepseek-reasoner":
-            messages = cls._preprocess_reasoner_messages(messages, require_json_output)
+            processed_messages = cls._preprocess_reasoner_messages(messages, require_json_output)
+            # Correct cast syntax and ensure it points to the new provider
+            messages = cast(Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]], processed_messages)
             # Disable JSON output for reasoner model
             require_json_output = False
 
-        return await OpenAICompatibleProvider.send_request(
+        return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="DeepSeek",
             base_url="https://api.deepseek.com/v1",
@@ -1480,7 +1777,6 @@ class DeepseekModels:
             require_json_output=require_json_output,
             messages=messages,
             stream=stream,
-            additional_params=additional_params,
         )
 
     @staticmethod
@@ -1490,7 +1786,7 @@ class DeepseekModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await DeepseekModels.send_deepseek_request(
@@ -1506,8 +1802,8 @@ class DeepseekModels:
         return wrapper
 
     # Model-specific methods
-    chat = custom_model("deepseek-chat")
-    reasoner = custom_model("deepseek-reasoner")
+    chat: ClassVar[Callable] = custom_model("deepseek-chat")
+    reasoner: ClassVar[Callable] = custom_model("deepseek-reasoner")
 
 
 class HuggingFaceModels:
@@ -1522,7 +1818,7 @@ class HuggingFaceModels:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         require_json_output: bool = False,
-        messages: Optional[List[Dict[str, str]]] = None,
+        messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stream: bool = False,
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
@@ -1577,12 +1873,15 @@ class HuggingFaceModels:
                         )
 
                         for chunk in response:
-                            if chunk.token.text:
-                                content = chunk.token.text
-                                # Clean the content of unwanted tags for each chunk
-                                content = HuggingFaceModels._clean_response_tags(content)
-                                full_message += content
-                                yield content
+                            # Ensure chunk is not a string before trying attribute access
+                            if not isinstance(chunk, str):
+                                token = getattr(chunk, 'token', None)
+                                if token and hasattr(token, 'text') and token.text:
+                                    content = token.text
+                                    # Clean the content of unwanted tags for each chunk
+                                    content = HuggingFaceModels._clean_response_tags(content)
+                                    full_message += content
+                                    yield content
 
                         logger.debug("Stream complete")
                         logger.debug(f"Full message: {full_message}")
@@ -1676,7 +1975,7 @@ class HuggingFaceModels:
             temperature: float = 0.7,
             max_tokens: int = 4000,
             require_json_output: bool = False,
-            messages: Optional[List[Dict[str, str]]] = None,
+            messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
             stream: bool = False,
         ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
             return await HuggingFaceModels.send_huggingface_request(
@@ -1692,5 +1991,5 @@ class HuggingFaceModels:
         return wrapper
 
     # Add commonly used models
-    qwen2_5_coder = custom_model("Qwen/Qwen2.5-Coder-32B-Instruct")
-    meta_llama_3_8b = custom_model("meta-llama/Meta-Llama-3-8B-Instruct")
+    qwen2_5_coder: ClassVar[Callable] = custom_model("Qwen/Qwen2.5-Coder-32B-Instruct")
+    meta_llama_3_8b: ClassVar[Callable] = custom_model("meta-llama/Meta-Llama-3-8B-Instruct")
