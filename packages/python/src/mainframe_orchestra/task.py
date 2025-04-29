@@ -171,6 +171,7 @@ class Task(BaseModel):
         initial_response: bool = False,
         tool_summaries: bool = False,
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
+        stream: bool = False,
     ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """Create and execute a task synchronously.
 
@@ -185,35 +186,51 @@ class Task(BaseModel):
                     "Task.create() cannot be called from a running event loop. Use Task.create_async() instead."
                 )
             except RuntimeError:
-                # No running loop, okay to create one for sync execution
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                logger.info("[Task.create] Created new event loop for synchronous execution")
+                # Not in an async context, so we can use or create a loop
+                created_loop = False
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        created_loop = True
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    created_loop = True
 
-            # Run the async version synchronously
-            result = loop.run_until_complete(
-                cls.create_async(
-                    agent=agent,
-                    role=role,
-                    goal=goal,
-                    attributes=attributes,
-                    context=context,
-                    instruction=instruction,
-                    llm=llm,
-                    tools=tools,
-                    image_data=image_data,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    require_json_output=require_json_output,
-                    callback=callback,
-                    event_queue=event_queue,
-                    messages=messages,
-                    initial_response=initial_response,
-                    tool_summaries=tool_summaries,
-                    pre_execute=pre_execute,
+            logger.debug("[Task.create] Using event loop for synchronous execution")
+
+            try:
+                # Run the async version synchronously
+                result = loop.run_until_complete(
+                    cls.create_async(
+                        agent=agent,
+                        role=role,
+                        goal=goal,
+                        attributes=attributes,
+                        context=context,
+                        instruction=instruction,
+                        llm=llm,
+                        tools=tools,
+                        image_data=image_data,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        require_json_output=require_json_output,
+                        callback=callback,
+                        event_queue=event_queue,
+                        messages=messages,
+                        initial_response=initial_response,
+                        tool_summaries=tool_summaries,
+                        pre_execute=pre_execute,
+                        stream=stream,
+                    )
                 )
-            )
-            return result
+                return result
+            finally:
+                # Only close the loop if we created it
+                if created_loop and not loop.is_closed():
+                    loop.close()
         except Exception as e:
             logger.error(f"[Task.create] Error during synchronous task creation: {str(e)}", exc_info=True)
             return e
@@ -310,9 +327,7 @@ class Task(BaseModel):
                 "context": context,
                 "instruction": instruction,
                 "llm": llm or (agent.llm if agent else None),
-                "tools": tools
-                or getattr(agent, "tools", None)
-                or None,  # Handle missing tools attribute
+                "tools": set().union(tools or set(), getattr(agent, "tools", None) or set()),  # Merge tools
                 "image_data": image_data,
                 "temperature": temperature or (agent.temperature if agent else 0.7),
                 "max_tokens": max_tokens or (agent.max_tokens if agent else 4000),
@@ -802,6 +817,15 @@ The original task instruction:
                     truncated_response = repr(response[:400])
                     logger.error(f"Problematic response: {truncated_response}...")
 
+                    # Increment retry counter for invalid tool responses
+                    retry_count = getattr(self, '_invalid_response_retries', 0) + 1
+                    self._invalid_response_retries = retry_count
+
+                    # Exit loop after 3 consecutive failures
+                    if retry_count >= 3:
+                        logger.warning(f"[TOOL_LOOP] Too many invalid tool responses ({retry_count}). Exiting tool loop.")
+                        return None, tool_results
+
                     # Safely call the callback
                     if callback:
                         callback_event = {
@@ -809,6 +833,7 @@ The original task instruction:
                             "content": error_msg,
                             "response": response[:1000],  # Truncate very long responses
                             "iteration": iteration_count,
+                            "retry": retry_count,
                         }
                         if asyncio.iscoroutinefunction(callback):
                             await callback(callback_event)

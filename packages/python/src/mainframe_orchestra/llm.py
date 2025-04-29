@@ -8,6 +8,7 @@ import re
 import time
 import requests
 import base64
+import asyncio
 from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union, Callable, ClassVar, Any, cast
 
 import google.generativeai as genai
@@ -706,11 +707,16 @@ class OpenaiModels:
     gpt_4: ClassVar[Callable] = custom_model("gpt-4")
     gpt_4o: ClassVar[Callable] = custom_model("gpt-4o")
     gpt_4o_mini: ClassVar[Callable] = custom_model("gpt-4o-mini")
+    gpt_4_1: ClassVar[Callable] = custom_model("gpt-4.1")
+    gpt_4_1_mini: ClassVar[Callable] = custom_model("gpt-4.1-mini")
+    gpt_4_1_nano: ClassVar[Callable] = custom_model("gpt-4.1-nano")
+    gpt_4_5_preview: ClassVar[Callable] = custom_model("gpt-4.5-preview")
     o1_mini: ClassVar[Callable] = custom_model("o1-mini")
     o1_preview: ClassVar[Callable] = custom_model("o1-preview")
-    gpt_4_5_preview: ClassVar[Callable] = custom_model("gpt-4.5-preview")
-    o4_mini: ClassVar[Callable] = custom_model("o4-mini")
+    o1: ClassVar[Callable] = custom_model("o1")
+    o3_mini: ClassVar[Callable] = custom_model("o3-mini")
     o3: ClassVar[Callable] = custom_model("o3")
+    o4_mini: ClassVar[Callable] = custom_model("o4-mini")
 
 
 class AnthropicModels:
@@ -728,12 +734,15 @@ class AnthropicModels:
         messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stop_sequences: Optional[List[str]] = None,
         stream: bool = False,
+        max_retries: int = 3,  # Add max_retries parameter
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
         Sends an asynchronous request to an Anthropic model using the Messages API format.
+        Implements automatic retries for rate limit errors with backoff.
         """
         spinner = Halo(text="Sending request to Anthropic...", spinner="dots")
         spinner.start()
+        backoff_times = [10, 30, 60]  # Backoff in seconds
 
         try:
             api_key = config.validate_api_key("ANTHROPIC_API_KEY")
@@ -857,111 +866,139 @@ class AnthropicModels:
                 async def stream_generator():
                     full_message = ""
                     logger.debug("Stream started")
-                    try:
-                        response = await client.messages.create(
-                            model=model,
-                            messages=anthropic_messages,
-                            system=system_message if isinstance(system_message, str) else NOT_GIVEN,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
-                            stream=True,
-                        )
-                        async for chunk in response:
-                            if chunk.type == "content_block_delta":
-                                if chunk.delta.type == "text_delta":
-                                    content = chunk.delta.text
-                                    full_message += content
-                                    yield content
-                            elif chunk.type == "message_delta":
-                                # When a stop_reason is provided, log it without per-chunk verbosity
-                                if chunk.delta.stop_reason:
-                                    logger.debug(
-                                        f"Message delta stop reason: {chunk.delta.stop_reason}"
-                                    )
-                            elif chunk.type == "error":
-                                logger.error(f"Stream error: {chunk.error}")
-                                break
-                        logger.debug("Stream complete")
-                        logger.debug(f"Final message: {full_message}")
-                    except (AnthropicConnectionError, AnthropicTimeoutError) as e:
-                        logger.error(f"Connection error during streaming: {str(e)}", exc_info=True)
-                        yield ""
-                    except AnthropicRateLimitError as e:
-                        logger.error(
-                            f"Rate limit exceeded during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except AnthropicStatusError as e:
-                        logger.error(f"API status error during streaming: {str(e)}", exc_info=True)
-                        yield ""
-                    except AnthropicResponseValidationError as e:
-                        logger.error(
-                            f"Invalid response format during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except ValueError as e:
-                        logger.error(
-                            f"Configuration error during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except Exception as e:
-                        logger.error(
-                            f"An unexpected error occurred during streaming: {e}", exc_info=True
-                        )
-                        yield ""
+
+                    for attempt in range(max_retries):
+                        try:
+                            response = await client.messages.create(
+                                model=model,
+                                messages=anthropic_messages,
+                                system=system_message if isinstance(system_message, str) else NOT_GIVEN,
+                                temperature=temperature,
+                                max_tokens=max_tokens,
+                                stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
+                                stream=True,
+                            )
+                            async for chunk in response:
+                                if chunk.type == "content_block_delta":
+                                    if chunk.delta.type == "text_delta":
+                                        content = chunk.delta.text
+                                        full_message += content
+                                        yield content
+                                elif chunk.type == "message_delta":
+                                    # When a stop_reason is provided, log it without per-chunk verbosity
+                                    if chunk.delta.stop_reason:
+                                        logger.debug(
+                                            f"Message delta stop reason: {chunk.delta.stop_reason}"
+                                        )
+                                elif chunk.type == "error":
+                                    logger.error(f"Stream error: {chunk.error}")
+                                    break
+                            logger.debug("Stream complete")
+                            logger.debug(f"Final message: {full_message}")
+                            break  # Exit retry loop on success
+
+                        except AnthropicRateLimitError as e:
+                            if attempt < max_retries - 1:  # If not the last attempt
+                                backoff_time = backoff_times[min(attempt, len(backoff_times) - 1)]
+                                logger.warning(f"Rate limit exceeded during streaming, backing off for {backoff_time} seconds (Attempt {attempt + 1}/{max_retries})")
+                                await asyncio.sleep(backoff_time)
+                                continue
+                            logger.error(f"Rate limit exceeded during streaming after {max_retries} attempts: {str(e)}", exc_info=True)
+                            yield ""
+
+                        except (AnthropicConnectionError, AnthropicTimeoutError) as e:
+                            logger.error(f"Connection error during streaming: {str(e)}", exc_info=True)
+                            yield ""
+                            break
+                        except AnthropicStatusError as e:
+                            logger.error(f"API status error during streaming: {str(e)}", exc_info=True)
+                            yield ""
+                            break
+                        except AnthropicResponseValidationError as e:
+                            logger.error(
+                                f"Invalid response format during streaming: {str(e)}", exc_info=True
+                            )
+                            yield ""
+                            break
+                        except ValueError as e:
+                            logger.error(
+                                f"Configuration error during streaming: {str(e)}", exc_info=True
+                            )
+                            yield ""
+                            break
+                        except Exception as e:
+                            logger.error(
+                                f"An unexpected error occurred during streaming: {e}", exc_info=True
+                            )
+                            yield ""
+                            break
 
                 return stream_generator()
 
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response = await client.messages.create(
-                model=model,
-                messages=anthropic_messages,
-                system=system_message if isinstance(system_message, str) else NOT_GIVEN,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
-            )
+            # Non-streaming logic with retries
+            for attempt in range(max_retries):
+                try:
+                    spinner.text = f"Waiting for {model} response..."
+                    response = await client.messages.create(
+                        model=model,
+                        messages=anthropic_messages,
+                        system=system_message if isinstance(system_message, str) else NOT_GIVEN,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
+                    )
 
-            # Extract content, handling potential ToolUseBlock
-            content = ""
-            if response.content:
-                first_block = response.content[0]
-                if isinstance(first_block, TextBlock):
-                    content = first_block.text
-                else:
-                    # Handle ToolUseBlock or other block types if needed
-                    logger.debug(f"First content block is not text: {type(first_block)}")
+                    # Extract content, handling potential ToolUseBlock
+                    content = ""
+                    if response.content:
+                        first_block = response.content[0]
+                        if isinstance(first_block, TextBlock):
+                            content = first_block.text
+                        else:
+                            # Handle ToolUseBlock or other block types if needed
+                            logger.debug(f"First content block is not text: {type(first_block)}")
 
-            spinner.succeed("Request completed")
-            # For non-JSON responses, keep original formatting but make single line
-            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
-            return content.strip(), None
+                    spinner.succeed("Request completed")
+                    # For non-JSON responses, keep original formatting but make single line
+                    logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
+                    return content.strip(), None
 
-        except (AnthropicConnectionError, AnthropicTimeoutError) as e:
-            spinner.fail("Connection failed")
-            logger.error(f"Connection error: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicRateLimitError as e:
-            spinner.fail("Rate limit exceeded")
-            logger.error(f"Rate limit exceeded: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicStatusError as e:
-            spinner.fail("API Status Error")
-            logger.error(f"API Status Error: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicResponseValidationError as e:
-            spinner.fail("Invalid Response Format")
-            logger.error(f"Invalid response format: {str(e)}", exc_info=True)
-            return "", e
-        except ValueError as e:
-            spinner.fail("Configuration Error")
-            logger.error(f"Configuration error: {str(e)}", exc_info=True)
-            return "", e
+                except AnthropicRateLimitError as e:
+                    if attempt < max_retries - 1:  # If not the last attempt
+                        backoff_time = backoff_times[min(attempt, len(backoff_times) - 1)]
+                        spinner.text = f"Rate limit hit, retrying in {backoff_time} seconds... (Attempt {attempt + 1}/{max_retries})"
+                        logger.warning(f"Rate limit exceeded, backing off for {backoff_time} seconds")
+                        await asyncio.sleep(backoff_time)
+                        continue
+                    else:
+                        spinner.fail("Rate limit exceeded after all retries")
+                        logger.error(f"Rate limit exceeded after {max_retries} attempts: {str(e)}", exc_info=True)
+                        return "", e
+
+                except (AnthropicConnectionError, AnthropicTimeoutError) as e:
+                    spinner.fail("Connection failed")
+                    logger.error(f"Connection error: {str(e)}", exc_info=True)
+                    return "", e
+                except AnthropicStatusError as e:
+                    spinner.fail("API Status Error")
+                    logger.error(f"API Status Error: {str(e)}", exc_info=True)
+                    return "", e
+                except AnthropicResponseValidationError as e:
+                    spinner.fail("Invalid Response Format")
+                    logger.error(f"Invalid response format: {str(e)}", exc_info=True)
+                    return "", e
+                except ValueError as e:
+                    spinner.fail("Configuration Error")
+                    logger.error(f"Configuration error: {str(e)}", exc_info=True)
+                    return "", e
+                except Exception as e:
+                    spinner.fail("Request failed")
+                    logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+                    return "", e
+
         except Exception as e:
-            spinner.fail("Request failed")
-            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+            spinner.fail("Setup failed")
+            logger.error(f"Failed to set up request: {str(e)}", exc_info=True)
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
@@ -1097,6 +1134,14 @@ class OpenrouterModels:
     gpt_4_5_preview: ClassVar[Callable] = custom_model("openai/gpt-4.5-preview")
     o1_preview: ClassVar[Callable] = custom_model("openai/o1-preview")
     o1_mini: ClassVar[Callable] = custom_model("openai/o1-mini")
+    o3: ClassVar[Callable] = custom_model("openai/o3")
+    o3_mini: ClassVar[Callable] = custom_model("openai/o3-mini")
+    o3_mini_high: ClassVar[Callable] = custom_model("openai/o3-mini-high")
+    o4_mini: ClassVar[Callable] = custom_model("openai/o4-mini")
+    o4_mini_high: ClassVar[Callable] = custom_model("openai/o4-mini-high")
+    gpt_4_1: ClassVar[Callable] = custom_model("openai/gpt-4.1")
+    gpt_4_1_mini: ClassVar[Callable] = custom_model("openai/gpt-4.1-mini")
+    gpt_4_1_nano: ClassVar[Callable] = custom_model("openai/gpt-4.1-nano")
     gemini_flash_1_5: ClassVar[Callable] = custom_model("google/gemini-flash-1.5")
     llama_3_70b_sonar_32k: ClassVar[Callable] = custom_model("perplexity/llama-3-sonar-large-32k-chat")
     command_r: ClassVar[Callable] = custom_model("cohere/command-r-plus")
