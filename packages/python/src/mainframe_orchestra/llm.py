@@ -997,8 +997,8 @@ class AnthropicModels:
                     return "", e
 
         except Exception as e:
-            spinner.fail("Setup failed")
-            logger.error(f"Failed to set up request: {str(e)}", exc_info=True)
+            spinner.fail("Request failed")
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
             return "", e
         finally:
             if spinner.spinner_id:  # Check if spinner is still running
