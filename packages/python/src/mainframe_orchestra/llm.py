@@ -417,7 +417,7 @@ class OpenAIChatCompletionsProvider:
                     image_data, provider_name
                 )
 
-            spinner = Halo(text=f"Sending request to {provider_name} (Chat)...", spinner="dots")
+            spinner = Halo(text=f"Sending request to {provider_name} (Chat Completions API)...", spinner="dots")
             spinner.start()
 
             # Initialize client
