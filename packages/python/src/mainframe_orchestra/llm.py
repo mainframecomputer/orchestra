@@ -201,7 +201,7 @@ class OpenAICompatibleProvider:
                 response.raise_for_status()
                 base64_data = base64.b64encode(response.content).decode("utf-8")
 
-                if provider_name in ["OpenAI", "Gemini"]:
+                if provider_name in ["OpenAI", "Gemini", "OpenRouter"]:
                     # These providers need data URL format
                     processed_images.append(f"data:image/jpeg;base64,{base64_data}")
                 else:
@@ -209,7 +209,7 @@ class OpenAICompatibleProvider:
                     processed_images.append(base64_data)
             else:
                 # Handle existing base64 data
-                if provider_name in ["OpenAI", "Gemini"] and not img.startswith("data:"):
+                if provider_name in ["OpenAI", "Gemini", "OpenRouter"] and not img.startswith("data:"):
                     # Add data URL prefix if missing
                     processed_images.append(f"data:image/jpeg;base64,{img}")
                 else:
@@ -247,32 +247,78 @@ class OpenAICompatibleProvider:
             else:
                 client = wrap_openai(AsyncOpenAI(api_key=api_key))
 
-            # Separate system message (instructions) from input messages
-            system_instructions = None
-            input_messages = []
+            # Extract system message if present
+            system_message = None
             if messages:
                 for msg in messages:
                     if msg["role"] == "system":
-                        system_instructions = msg["content"]
-                    else:
-                        input_messages.append(msg)
-            else:
-                input_messages = []
+                        system_message = msg.get("content")
+                        break
 
-            # Prepare top-level request parameters
+            # Format input for Responses API
+            # The API expects [{role: "user", content: [{type: "input_text", text: "..."}]}]
+            user_message = None
+            if messages:
+                # Find the last user message
+                for msg in reversed(messages):
+                    if msg["role"] == "user":
+                        user_message = msg
+                        break
+
+            # Prepare input content
+            input_content = []
+            if user_message:
+                msg_content = []
+                content_data = user_message.get("content", "")
+
+                # Convert content to appropriate format
+                if isinstance(content_data, str):
+                    msg_content.append({
+                        "type": "input_text",  # Use input_text (not output_text)
+                        "text": content_data
+                    })
+                elif isinstance(content_data, list):
+                    for item in content_data:
+                        if isinstance(item, dict):
+                            if item.get("type") == "text":
+                                msg_content.append({
+                                    "type": "input_text",
+                                    "text": item.get("text", "")
+                                })
+
+                # Add images if available
+                if image_data:
+                    if isinstance(image_data, str):
+                        msg_content.append({
+                            "type": "input_image",
+                            "image_url": image_data
+                        })
+                    else:  # List of images
+                        for img in image_data:
+                            msg_content.append({
+                                "type": "input_image",
+                                "image_url": img
+                            })
+
+                # Add user message with content to input array
+                input_content.append({
+                    "role": "user",
+                    "content": msg_content
+                })
+
+            # Prepare request parameters
             request_params = {
                 "model": model,
-                "input": input_messages,
+                "input": input_content,
                 "temperature": temperature,
-                "max_output_tokens": max_tokens, # Renamed from max_tokens
+                "max_output_tokens": max_tokens,
             }
 
-            # Add instructions if a system message was found
-            if system_instructions:
-                request_params["instructions"] = system_instructions
+            # Add system message as instructions if present
+            if system_message is not None:
+                request_params["instructions"] = system_message
 
-            # Prepare the 'text' parameter ONLY if JSON output is required
-            request_text_params = None
+            # Add JSON output formatting if required
             if require_json_output:
                 request_text_params = {
                     "format": {
@@ -284,7 +330,7 @@ class OpenAICompatibleProvider:
                 }
                 request_params["text"] = request_text_params
 
-            # Log request details (adjusted for new structure)
+            # Log request details
             logger.debug(
                 f"[LLM] {provider_name} ({model}) Request (Responses API): {json.dumps(request_params | {'stream': stream}, separators=(',', ':'))}"
             )
@@ -641,8 +687,22 @@ class OpenaiModels:
                             }
                         )
 
-                # Add original text content
-                content.append({"type": "text", "text": last_user_msg["content"]})
+                # Handle the original content properly based on its type
+                original_content = last_user_msg["content"]
+                if isinstance(original_content, list):
+                    # If already a list of content objects, only add text items
+                    for item in original_content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            content.append(item)
+                        elif isinstance(item, str):
+                            content.append({"type": "text", "text": item})
+                elif isinstance(original_content, str):
+                    # If a simple string, add as text content
+                    content.append({"type": "text", "text": original_content})
+                elif original_content is not None:
+                    # For any other type, convert to string
+                    content.append({"type": "text", "text": str(original_content)})
+
                 last_user_msg["content"] = content
 
         # Add check for non-streaming models (currently only o1 models) at the start
@@ -1058,29 +1118,6 @@ class OpenrouterModels:
         """
         Sends a request to OpenRouter models.
         """
-        # Process images if present
-        if image_data and messages:
-            last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
-            if last_user_msg:
-                content = []
-                if isinstance(image_data, str):
-                    image_data = [image_data]
-
-                for image in image_data:
-                    if image.startswith(("http://", "https://")):
-                        content.append({"type": "image_url", "image_url": {"url": image}})
-                    else:
-                        content.append(
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                            }
-                        )
-
-                # Add original text content
-                content.append({"type": "text", "text": last_user_msg["content"]})
-                last_user_msg["content"] = content
-
         # Get API key
         api_key = config.validate_api_key("OPENROUTER_API_KEY")
 
@@ -1461,12 +1498,56 @@ class GroqModels:
         # Get API key
         api_key = config.validate_api_key("GROQ_API_KEY")
 
+        # Process images if present
+        if image_data and messages:
+            last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
+            if last_user_msg:
+                # Convert the last user message to the content array format
+                content = []
+
+                # Get text content first
+                text_content = ""
+                if isinstance(last_user_msg.get("content"), str):
+                    text_content = last_user_msg["content"]
+
+                # Add text part first
+                content.append({
+                    "type": "text",
+                    "text": text_content
+                })
+
+                # Process images
+                if isinstance(image_data, str):
+                    image_data = [image_data]
+
+                # Add each image to content
+                for img in image_data:
+                    if img.startswith(("http://", "https://")):
+                        # For URLs, use them directly
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": img
+                            }
+                        })
+                    else:
+                        # For base64 data, create a data URL
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{img}"
+                            }
+                        })
+
+                # Replace the original content with the formatted array
+                last_user_msg["content"] = content
+
         return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="Groq",
             base_url="https://api.groq.com/openai/v1",
             api_key=api_key,
-            image_data=image_data,
+            image_data=None,  # Set to None since we manually formatted the message
             temperature=temperature,
             max_tokens=max_tokens,
             require_json_output=require_json_output,
@@ -1505,6 +1586,8 @@ class GroqModels:
     llama3_8b_8192: ClassVar[Callable] = custom_model("llama3-8b-8192")
     mixtral_8x7b_32768: ClassVar[Callable] = custom_model("mixtral-8x7b-32768")
     llama_3_2_vision: ClassVar[Callable] = custom_model("llama-3.2-11b-vision-preview")
+    llama_4_scout_17b_16e_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-4-scout-17b-16e-instruct")
+    llama_4_scout_17b_16e_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-4-maverick-17b-128e-instruct")
 
 
 class GeminiModels:
