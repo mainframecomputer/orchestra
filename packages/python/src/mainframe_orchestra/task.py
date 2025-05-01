@@ -20,6 +20,8 @@ def serialize_result(obj: Any) -> Union[str, int, float, bool, None, Dict[str, A
             return obj
         elif isinstance(obj, (datetime, date)):
             return obj.isoformat()
+        elif isinstance(obj, range):
+            return list(obj)
         elif isinstance(obj, dict):
             try:
                 return {str(k): serialize_result(v) for k, v in obj.items()}
