@@ -309,7 +309,7 @@ class Task(BaseModel):
                     "content": (
                         f"You are {role or (agent.role if agent else None)}. "
                         f"Your goal is {goal or (agent.goal if agent else None)}"
-                        f"{' Your attributes are: ' + (attributes or (agent.attributes if agent else '')) if attributes or (agent.attributes if agent else '') else ''}"
+                        f"{' Your attributes are: ' + (attributes or (agent.attributes if agent else '')) if attributes or (agent.attributes if agent else '') else ''}."
                         f"{' Additional context: ' + (context or '') if context else ''}"
                     ).strip(),
                 }
