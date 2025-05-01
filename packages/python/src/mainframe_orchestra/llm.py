@@ -314,9 +314,33 @@ class OpenAICompatibleProvider:
                 "max_output_tokens": max_tokens,
             }
 
-            # Add system message as instructions if present
-            if system_message is not None:
-                request_params["instructions"] = system_message
+            # Add system message and conversation history to instructions
+            instruction_text = ""
+            if system_message:
+                instruction_text += system_message + "\n\n"
+
+            if messages and len(messages) > 1:  # Only if we have more than just the current message
+                conversation_history = ""
+                for msg in messages[:-1]:  # Exclude the last message (which is in input)
+                    if msg["role"] in ["user", "assistant"]:
+                        role_name = "User" if msg["role"] == "user" else "Assistant"
+
+                        # Extract content text
+                        content_text = ""
+                        if isinstance(msg["content"], str):
+                            content_text = msg["content"]
+                        elif isinstance(msg["content"], list):
+                            for item in msg["content"]:
+                                if isinstance(item, dict) and item.get("type") == "text":
+                                    content_text += item.get("text", "")
+
+                        conversation_history += f"{role_name}: {content_text}\n\n"
+
+                if conversation_history:
+                    instruction_text += "Previous conversation:\n" + conversation_history
+
+            if instruction_text:
+                request_params["instructions"] = instruction_text.strip()
 
             # Add JSON output formatting if required
             if require_json_output:
