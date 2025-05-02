@@ -255,56 +255,43 @@ class OpenAICompatibleProvider:
                         system_message = msg.get("content")
                         break
 
-            # Format input for Responses API
-            # The API expects [{role: "user", content: [{type: "input_text", text: "..."}]}]
-            user_message = None
-            if messages:
-                # Find the last user message
-                for msg in reversed(messages):
-                    if msg["role"] == "user":
-                        user_message = msg
-                        break
-
-            # Prepare input content
+            # Prepare input content (conversation history)
             input_content = []
-            if user_message:
-                msg_content = []
-                content_data = user_message.get("content", "")
+            if messages:
+                for msg in messages:
+                    role = msg["role"]
+                    if role == "system":
+                        continue  # <-- SKIP system messages in input array
 
-                # Convert content to appropriate format
-                if isinstance(content_data, str):
-                    msg_content.append({
-                        "type": "input_text",  # Use input_text (not output_text)
-                        "text": content_data
-                    })
-                elif isinstance(content_data, list):
-                    for item in content_data:
-                        if isinstance(item, dict):
-                            if item.get("type") == "text":
+                    content_data = msg.get("content", "")
+                    msg_content = []
+                    content_type = "input_text" if role == "user" else "output_text"
+
+                    if isinstance(content_data, str):
+                        msg_content.append({
+                            "type": content_type,
+                            "text": content_data
+                        })
+                    elif isinstance(content_data, list):
+                        for item in content_data:
+                            if isinstance(item, dict) and item.get("type") == "text":
                                 msg_content.append({
-                                    "type": "input_text",
+                                    "type": content_type,
                                     "text": item.get("text", "")
                                 })
-
-                # Add images if available
-                if image_data:
-                    if isinstance(image_data, str):
-                        msg_content.append({
-                            "type": "input_image",
-                            "image_url": image_data
-                        })
-                    else:  # List of images
-                        for img in image_data:
+                    # Add images to the last user message if image_data is present
+                    if image_data and role == "user" and msg == messages[-1]:
+                        images_to_add = [image_data] if isinstance(image_data, str) else image_data
+                        for img in images_to_add:
                             msg_content.append({
                                 "type": "input_image",
                                 "image_url": img
                             })
 
-                # Add user message with content to input array
-                input_content.append({
-                    "role": "user",
-                    "content": msg_content
-                })
+                    input_content.append({
+                        "role": role,
+                        "content": msg_content
+                    })
 
             # Prepare request parameters
             request_params = {
@@ -314,31 +301,10 @@ class OpenAICompatibleProvider:
                 "max_output_tokens": max_tokens,
             }
 
-            # Add system message and conversation history to instructions
+            # Only use instructions for system message, if present
             instruction_text = ""
             if system_message:
-                instruction_text += system_message + "\n\n"
-
-            if messages and len(messages) > 1:  # Only if we have more than just the current message
-                conversation_history = ""
-                for msg in messages[:-1]:  # Exclude the last message (which is in input)
-                    if msg["role"] in ["user", "assistant"]:
-                        role_name = "User" if msg["role"] == "user" else "Assistant"
-
-                        # Extract content text
-                        content_text = ""
-                        if isinstance(msg["content"], str):
-                            content_text = msg["content"]
-                        elif isinstance(msg["content"], list):
-                            for item in msg["content"]:
-                                if isinstance(item, dict) and item.get("type") == "text":
-                                    content_text += item.get("text", "")
-
-                        conversation_history += f"{role_name}: {content_text}\n\n"
-
-                if conversation_history:
-                    instruction_text += "Previous conversation:\n" + conversation_history
-
+                instruction_text = system_message
             if instruction_text:
                 request_params["instructions"] = instruction_text.strip()
 
