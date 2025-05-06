@@ -8,6 +8,7 @@ import re
 import time
 import requests
 import base64
+import asyncio
 from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union, Callable, ClassVar, Any, cast
 
 import google.generativeai as genai
@@ -200,7 +201,7 @@ class OpenAICompatibleProvider:
                 response.raise_for_status()
                 base64_data = base64.b64encode(response.content).decode("utf-8")
 
-                if provider_name in ["OpenAI", "Gemini"]:
+                if provider_name in ["OpenAI", "Gemini", "OpenRouter"]:
                     # These providers need data URL format
                     processed_images.append(f"data:image/jpeg;base64,{base64_data}")
                 else:
@@ -208,7 +209,7 @@ class OpenAICompatibleProvider:
                     processed_images.append(base64_data)
             else:
                 # Handle existing base64 data
-                if provider_name in ["OpenAI", "Gemini"] and not img.startswith("data:"):
+                if provider_name in ["OpenAI", "Gemini", "OpenRouter"] and not img.startswith("data:"):
                     # Add data URL prefix if missing
                     processed_images.append(f"data:image/jpeg;base64,{img}")
                 else:
@@ -246,32 +247,68 @@ class OpenAICompatibleProvider:
             else:
                 client = wrap_openai(AsyncOpenAI(api_key=api_key))
 
-            # Separate system message (instructions) from input messages
-            system_instructions = None
-            input_messages = []
+            # Extract system message if present
+            system_message = None
             if messages:
                 for msg in messages:
                     if msg["role"] == "system":
-                        system_instructions = msg["content"]
-                    else:
-                        input_messages.append(msg)
-            else:
-                input_messages = []
+                        system_message = msg.get("content")
+                        break
 
-            # Prepare top-level request parameters
+            # Prepare input content (conversation history)
+            input_content = []
+            if messages:
+                for msg in messages:
+                    role = msg["role"]
+                    if role == "system":
+                        continue  # <-- SKIP system messages in input array
+
+                    content_data = msg.get("content", "")
+                    msg_content = []
+                    content_type = "input_text" if role == "user" else "output_text"
+
+                    if isinstance(content_data, str):
+                        msg_content.append({
+                            "type": content_type,
+                            "text": content_data
+                        })
+                    elif isinstance(content_data, list):
+                        for item in content_data:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                msg_content.append({
+                                    "type": content_type,
+                                    "text": item.get("text", "")
+                                })
+                    # Add images to the last user message if image_data is present
+                    if image_data and role == "user" and msg == messages[-1]:
+                        images_to_add = [image_data] if isinstance(image_data, str) else image_data
+                        for img in images_to_add:
+                            msg_content.append({
+                                "type": "input_image",
+                                "image_url": img
+                            })
+
+                    input_content.append({
+                        "role": role,
+                        "content": msg_content
+                    })
+
+            # Prepare request parameters
             request_params = {
                 "model": model,
-                "input": input_messages,
+                "input": input_content,
                 "temperature": temperature,
-                "max_output_tokens": max_tokens, # Renamed from max_tokens
+                "max_output_tokens": max_tokens,
             }
 
-            # Add instructions if a system message was found
-            if system_instructions:
-                request_params["instructions"] = system_instructions
+            # Only use instructions for system message, if present
+            instruction_text = ""
+            if system_message:
+                instruction_text = system_message
+            if instruction_text:
+                request_params["instructions"] = instruction_text.strip()
 
-            # Prepare the 'text' parameter ONLY if JSON output is required
-            request_text_params = None
+            # Add JSON output formatting if required
             if require_json_output:
                 request_text_params = {
                     "format": {
@@ -283,7 +320,7 @@ class OpenAICompatibleProvider:
                 }
                 request_params["text"] = request_text_params
 
-            # Log request details (adjusted for new structure)
+            # Log request details
             logger.debug(
                 f"[LLM] {provider_name} ({model}) Request (Responses API): {json.dumps(request_params | {'stream': stream}, separators=(',', ':'))}"
             )
@@ -416,7 +453,7 @@ class OpenAIChatCompletionsProvider:
                     image_data, provider_name
                 )
 
-            spinner = Halo(text=f"Sending request to {provider_name} (Chat)...", spinner="dots")
+            spinner = Halo(text=f"Sending request to {provider_name} (Chat Completions API)...", spinner="dots")
             spinner.start()
 
             # Initialize client
@@ -640,8 +677,22 @@ class OpenaiModels:
                             }
                         )
 
-                # Add original text content
-                content.append({"type": "text", "text": last_user_msg["content"]})
+                # Handle the original content properly based on its type
+                original_content = last_user_msg["content"]
+                if isinstance(original_content, list):
+                    # If already a list of content objects, only add text items
+                    for item in original_content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            content.append(item)
+                        elif isinstance(item, str):
+                            content.append({"type": "text", "text": item})
+                elif isinstance(original_content, str):
+                    # If a simple string, add as text content
+                    content.append({"type": "text", "text": original_content})
+                elif original_content is not None:
+                    # For any other type, convert to string
+                    content.append({"type": "text", "text": str(original_content)})
+
                 last_user_msg["content"] = content
 
         # Add check for non-streaming models (currently only o1 models) at the start
@@ -706,11 +757,16 @@ class OpenaiModels:
     gpt_4: ClassVar[Callable] = custom_model("gpt-4")
     gpt_4o: ClassVar[Callable] = custom_model("gpt-4o")
     gpt_4o_mini: ClassVar[Callable] = custom_model("gpt-4o-mini")
+    gpt_4_1: ClassVar[Callable] = custom_model("gpt-4.1")
+    gpt_4_1_mini: ClassVar[Callable] = custom_model("gpt-4.1-mini")
+    gpt_4_1_nano: ClassVar[Callable] = custom_model("gpt-4.1-nano")
+    gpt_4_5_preview: ClassVar[Callable] = custom_model("gpt-4.5-preview")
     o1_mini: ClassVar[Callable] = custom_model("o1-mini")
     o1_preview: ClassVar[Callable] = custom_model("o1-preview")
-    gpt_4_5_preview: ClassVar[Callable] = custom_model("gpt-4.5-preview")
-    o4_mini: ClassVar[Callable] = custom_model("o4-mini")
+    o1: ClassVar[Callable] = custom_model("o1")
+    o3_mini: ClassVar[Callable] = custom_model("o3-mini")
     o3: ClassVar[Callable] = custom_model("o3")
+    o4_mini: ClassVar[Callable] = custom_model("o4-mini")
 
 
 class AnthropicModels:
@@ -728,12 +784,15 @@ class AnthropicModels:
         messages: Optional[List[Dict[str, Union[str, List[Dict[str, Any]]]]]] = None,
         stop_sequences: Optional[List[str]] = None,
         stream: bool = False,
+        max_retries: int = 3,  # Add max_retries parameter
     ) -> Union[Tuple[str, Optional[Exception]], AsyncGenerator[str, None]]:
         """
         Sends an asynchronous request to an Anthropic model using the Messages API format.
+        Implements automatic retries for rate limit errors with backoff.
         """
         spinner = Halo(text="Sending request to Anthropic...", spinner="dots")
         spinner.start()
+        backoff_times = [10, 30, 60]  # Backoff in seconds
 
         try:
             api_key = config.validate_api_key("ANTHROPIC_API_KEY")
@@ -857,108 +916,136 @@ class AnthropicModels:
                 async def stream_generator():
                     full_message = ""
                     logger.debug("Stream started")
-                    try:
-                        response = await client.messages.create(
-                            model=model,
-                            messages=anthropic_messages,
-                            system=system_message if isinstance(system_message, str) else NOT_GIVEN,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
-                            stream=True,
-                        )
-                        async for chunk in response:
-                            if chunk.type == "content_block_delta":
-                                if chunk.delta.type == "text_delta":
-                                    content = chunk.delta.text
-                                    full_message += content
-                                    yield content
-                            elif chunk.type == "message_delta":
-                                # When a stop_reason is provided, log it without per-chunk verbosity
-                                if chunk.delta.stop_reason:
-                                    logger.debug(
-                                        f"Message delta stop reason: {chunk.delta.stop_reason}"
-                                    )
-                            elif chunk.type == "error":
-                                logger.error(f"Stream error: {chunk.error}")
-                                break
-                        logger.debug("Stream complete")
-                        logger.debug(f"Final message: {full_message}")
-                    except (AnthropicConnectionError, AnthropicTimeoutError) as e:
-                        logger.error(f"Connection error during streaming: {str(e)}", exc_info=True)
-                        yield ""
-                    except AnthropicRateLimitError as e:
-                        logger.error(
-                            f"Rate limit exceeded during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except AnthropicStatusError as e:
-                        logger.error(f"API status error during streaming: {str(e)}", exc_info=True)
-                        yield ""
-                    except AnthropicResponseValidationError as e:
-                        logger.error(
-                            f"Invalid response format during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except ValueError as e:
-                        logger.error(
-                            f"Configuration error during streaming: {str(e)}", exc_info=True
-                        )
-                        yield ""
-                    except Exception as e:
-                        logger.error(
-                            f"An unexpected error occurred during streaming: {e}", exc_info=True
-                        )
-                        yield ""
+
+                    for attempt in range(max_retries):
+                        try:
+                            response = await client.messages.create(
+                                model=model,
+                                messages=anthropic_messages,
+                                system=system_message if isinstance(system_message, str) else NOT_GIVEN,
+                                temperature=temperature,
+                                max_tokens=max_tokens,
+                                stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
+                                stream=True,
+                            )
+                            async for chunk in response:
+                                if chunk.type == "content_block_delta":
+                                    if chunk.delta.type == "text_delta":
+                                        content = chunk.delta.text
+                                        full_message += content
+                                        yield content
+                                elif chunk.type == "message_delta":
+                                    # When a stop_reason is provided, log it without per-chunk verbosity
+                                    if chunk.delta.stop_reason:
+                                        logger.debug(
+                                            f"Message delta stop reason: {chunk.delta.stop_reason}"
+                                        )
+                                elif chunk.type == "error":
+                                    logger.error(f"Stream error: {chunk.error}")
+                                    break
+                            logger.debug("Stream complete")
+                            logger.debug(f"Final message: {full_message}")
+                            break  # Exit retry loop on success
+
+                        except AnthropicRateLimitError as e:
+                            if attempt < max_retries - 1:  # If not the last attempt
+                                backoff_time = backoff_times[min(attempt, len(backoff_times) - 1)]
+                                logger.warning(f"Rate limit exceeded during streaming, backing off for {backoff_time} seconds (Attempt {attempt + 1}/{max_retries})")
+                                await asyncio.sleep(backoff_time)
+                                continue
+                            logger.error(f"Rate limit exceeded during streaming after {max_retries} attempts: {str(e)}", exc_info=True)
+                            yield ""
+
+                        except (AnthropicConnectionError, AnthropicTimeoutError) as e:
+                            logger.error(f"Connection error during streaming: {str(e)}", exc_info=True)
+                            yield ""
+                            break
+                        except AnthropicStatusError as e:
+                            logger.error(f"API status error during streaming: {str(e)}", exc_info=True)
+                            yield ""
+                            break
+                        except AnthropicResponseValidationError as e:
+                            logger.error(
+                                f"Invalid response format during streaming: {str(e)}", exc_info=True
+                            )
+                            yield ""
+                            break
+                        except ValueError as e:
+                            logger.error(
+                                f"Configuration error during streaming: {str(e)}", exc_info=True
+                            )
+                            yield ""
+                            break
+                        except Exception as e:
+                            logger.error(
+                                f"An unexpected error occurred during streaming: {e}", exc_info=True
+                            )
+                            yield ""
+                            break
 
                 return stream_generator()
 
-            # Non-streaming logic
-            spinner.text = f"Waiting for {model} response..."
-            response = await client.messages.create(
-                model=model,
-                messages=anthropic_messages,
-                system=system_message if isinstance(system_message, str) else NOT_GIVEN,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
-            )
+            # Non-streaming logic with retries
+            for attempt in range(max_retries):
+                try:
+                    spinner.text = f"Waiting for {model} response..."
+                    response = await client.messages.create(
+                        model=model,
+                        messages=anthropic_messages,
+                        system=system_message if isinstance(system_message, str) else NOT_GIVEN,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        stop_sequences=stop_sequences if stop_sequences else NOT_GIVEN,
+                    )
 
-            # Extract content, handling potential ToolUseBlock
-            content = ""
-            if response.content:
-                first_block = response.content[0]
-                if isinstance(first_block, TextBlock):
-                    content = first_block.text
-                else:
-                    # Handle ToolUseBlock or other block types if needed
-                    logger.debug(f"First content block is not text: {type(first_block)}")
+                    # Extract content, handling potential ToolUseBlock
+                    content = ""
+                    if response.content:
+                        first_block = response.content[0]
+                        if isinstance(first_block, TextBlock):
+                            content = first_block.text
+                        else:
+                            # Handle ToolUseBlock or other block types if needed
+                            logger.debug(f"First content block is not text: {type(first_block)}")
 
-            spinner.succeed("Request completed")
-            # For non-JSON responses, keep original formatting but make single line
-            logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
-            return content.strip(), None
+                    spinner.succeed("Request completed")
+                    # For non-JSON responses, keep original formatting but make single line
+                    logger.debug(f"[LLM] API Response: {' '.join(content.strip().splitlines())}")
+                    return content.strip(), None
 
-        except (AnthropicConnectionError, AnthropicTimeoutError) as e:
-            spinner.fail("Connection failed")
-            logger.error(f"Connection error: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicRateLimitError as e:
-            spinner.fail("Rate limit exceeded")
-            logger.error(f"Rate limit exceeded: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicStatusError as e:
-            spinner.fail("API Status Error")
-            logger.error(f"API Status Error: {str(e)}", exc_info=True)
-            return "", e
-        except AnthropicResponseValidationError as e:
-            spinner.fail("Invalid Response Format")
-            logger.error(f"Invalid response format: {str(e)}", exc_info=True)
-            return "", e
-        except ValueError as e:
-            spinner.fail("Configuration Error")
-            logger.error(f"Configuration error: {str(e)}", exc_info=True)
-            return "", e
+                except AnthropicRateLimitError as e:
+                    if attempt < max_retries - 1:  # If not the last attempt
+                        backoff_time = backoff_times[min(attempt, len(backoff_times) - 1)]
+                        spinner.text = f"Rate limit hit, retrying in {backoff_time} seconds... (Attempt {attempt + 1}/{max_retries})"
+                        logger.warning(f"Rate limit exceeded, backing off for {backoff_time} seconds")
+                        await asyncio.sleep(backoff_time)
+                        continue
+                    else:
+                        spinner.fail("Rate limit exceeded after all retries")
+                        logger.error(f"Rate limit exceeded after {max_retries} attempts: {str(e)}", exc_info=True)
+                        return "", e
+
+                except (AnthropicConnectionError, AnthropicTimeoutError) as e:
+                    spinner.fail("Connection failed")
+                    logger.error(f"Connection error: {str(e)}", exc_info=True)
+                    return "", e
+                except AnthropicStatusError as e:
+                    spinner.fail("API Status Error")
+                    logger.error(f"API Status Error: {str(e)}", exc_info=True)
+                    return "", e
+                except AnthropicResponseValidationError as e:
+                    spinner.fail("Invalid Response Format")
+                    logger.error(f"Invalid response format: {str(e)}", exc_info=True)
+                    return "", e
+                except ValueError as e:
+                    spinner.fail("Configuration Error")
+                    logger.error(f"Configuration error: {str(e)}", exc_info=True)
+                    return "", e
+                except Exception as e:
+                    spinner.fail("Request failed")
+                    logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+                    return "", e
+
         except Exception as e:
             spinner.fail("Request failed")
             logger.error(f"Unexpected error: {str(e)}", exc_info=True)
@@ -1021,29 +1108,6 @@ class OpenrouterModels:
         """
         Sends a request to OpenRouter models.
         """
-        # Process images if present
-        if image_data and messages:
-            last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
-            if last_user_msg:
-                content = []
-                if isinstance(image_data, str):
-                    image_data = [image_data]
-
-                for image in image_data:
-                    if image.startswith(("http://", "https://")):
-                        content.append({"type": "image_url", "image_url": {"url": image}})
-                    else:
-                        content.append(
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                            }
-                        )
-
-                # Add original text content
-                content.append({"type": "text", "text": last_user_msg["content"]})
-                last_user_msg["content"] = content
-
         # Get API key
         api_key = config.validate_api_key("OPENROUTER_API_KEY")
 
@@ -1097,6 +1161,14 @@ class OpenrouterModels:
     gpt_4_5_preview: ClassVar[Callable] = custom_model("openai/gpt-4.5-preview")
     o1_preview: ClassVar[Callable] = custom_model("openai/o1-preview")
     o1_mini: ClassVar[Callable] = custom_model("openai/o1-mini")
+    o3: ClassVar[Callable] = custom_model("openai/o3")
+    o3_mini: ClassVar[Callable] = custom_model("openai/o3-mini")
+    o3_mini_high: ClassVar[Callable] = custom_model("openai/o3-mini-high")
+    o4_mini: ClassVar[Callable] = custom_model("openai/o4-mini")
+    o4_mini_high: ClassVar[Callable] = custom_model("openai/o4-mini-high")
+    gpt_4_1: ClassVar[Callable] = custom_model("openai/gpt-4.1")
+    gpt_4_1_mini: ClassVar[Callable] = custom_model("openai/gpt-4.1-mini")
+    gpt_4_1_nano: ClassVar[Callable] = custom_model("openai/gpt-4.1-nano")
     gemini_flash_1_5: ClassVar[Callable] = custom_model("google/gemini-flash-1.5")
     llama_3_70b_sonar_32k: ClassVar[Callable] = custom_model("perplexity/llama-3-sonar-large-32k-chat")
     command_r: ClassVar[Callable] = custom_model("cohere/command-r-plus")
@@ -1416,12 +1488,56 @@ class GroqModels:
         # Get API key
         api_key = config.validate_api_key("GROQ_API_KEY")
 
+        # Process images if present
+        if image_data and messages:
+            last_user_msg = next((msg for msg in reversed(messages) if msg["role"] == "user"), None)
+            if last_user_msg:
+                # Convert the last user message to the content array format
+                content = []
+
+                # Get text content first
+                text_content = ""
+                if isinstance(last_user_msg.get("content"), str):
+                    text_content = last_user_msg["content"]
+
+                # Add text part first
+                content.append({
+                    "type": "text",
+                    "text": text_content
+                })
+
+                # Process images
+                if isinstance(image_data, str):
+                    image_data = [image_data]
+
+                # Add each image to content
+                for img in image_data:
+                    if img.startswith(("http://", "https://")):
+                        # For URLs, use them directly
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": img
+                            }
+                        })
+                    else:
+                        # For base64 data, create a data URL
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{img}"
+                            }
+                        })
+
+                # Replace the original content with the formatted array
+                last_user_msg["content"] = content
+
         return await OpenAIChatCompletionsProvider.send_request(
             model=model,
             provider_name="Groq",
             base_url="https://api.groq.com/openai/v1",
             api_key=api_key,
-            image_data=image_data,
+            image_data=None,  # Set to None since we manually formatted the message
             temperature=temperature,
             max_tokens=max_tokens,
             require_json_output=require_json_output,
@@ -1460,6 +1576,8 @@ class GroqModels:
     llama3_8b_8192: ClassVar[Callable] = custom_model("llama3-8b-8192")
     mixtral_8x7b_32768: ClassVar[Callable] = custom_model("mixtral-8x7b-32768")
     llama_3_2_vision: ClassVar[Callable] = custom_model("llama-3.2-11b-vision-preview")
+    llama_4_scout_17b_16e_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-4-scout-17b-16e-instruct")
+    llama_4_scout_17b_16e_instruct: ClassVar[Callable] = custom_model("meta-llama/llama-4-maverick-17b-128e-instruct")
 
 
 class GeminiModels:
