@@ -3,7 +3,7 @@ Mainframe Orchestra: a Python framework for building and orchestrating multi-age
 """
 # Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-__version__ = "0.1.0"
+__version__ = "0.0.35"
 
 import importlib
 
