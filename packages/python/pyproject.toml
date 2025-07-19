@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mainframe-orchestra"
-version = "0.0.35"
+version = "1.0.0"
 description = "Mainframe-Orchestra is a lightweight, open-source agentic framework for building LLM based pipelines and self-orchestrating multi-agent teams"
 authors = [
     "Mainframe Computer Inc. <hi@mainfra.me>",
@@ -18,24 +18,19 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 requests = "*"
 pydantic = ">=2.0"
-anthropic = "*"
-openai = ">=1.0"
-cohere = "*"
+litellm = "*"
 beautifulsoup4 = "*"
 tqdm = "*"
 python-dotenv = "*"
 PyYAML = "*"
-ollama = "*"
-huggingface-hub = "*"
 lxml = "*"
-halo = "*"
-groq = "*"
 numpy = "*"
 faiss-cpu = "*"
 pinecone = "*"
@@ -43,7 +38,6 @@ sentence_splitter = "*"
 igraph = "*"
 leidenalg = "*"
 fake-useragent = "*"
-google-generativeai = "*"
 tzdata = "^2024.2"
 braintrust = "*"
 mcp = "*"
@@ -58,11 +52,6 @@ langchain_tools = [
 matplotlib_tools = [
     "matplotlib"
 ]
-yahoo_finance_tools = [
-    "yfinance",
-    "yahoofinance",
-    "pandas"
-]
 fred_tools = [
     "fredapi",
     "pandas"
@@ -74,14 +63,6 @@ audio_tools = [
 stripe_tools = [
     "stripe-agent-toolkit"
 ]
-
-[tool.poetry.dependencies.yfinance]
-version = "*"
-optional = true
-
-[tool.poetry.dependencies.yahoofinance]
-version = "*"
-optional = true
 
 [tool.poetry.dependencies.langchain-core]
 version = "*"

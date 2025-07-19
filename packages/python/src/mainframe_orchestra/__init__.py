@@ -3,7 +3,7 @@ Mainframe Orchestra: a Python framework for building and orchestrating multi-age
 """
 # Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-__version__ = "0.0.35"
+__version__ = "1.0.0"
 
 import importlib
 
@@ -11,6 +11,7 @@ import importlib
 import sys
 from typing import TYPE_CHECKING
 
+from .adapters import MCPOrchestra
 from .agent import Agent
 from .config import Config
 from .llm import (
@@ -42,7 +43,6 @@ from .tools import (
     WhisperTools,
     WikipediaTools,
 )
-from .adapters import MCPOrchestra
 
 if TYPE_CHECKING:
     from .tools.audio_tools import TextToSpeechTools, WhisperTools
@@ -50,7 +50,6 @@ if TYPE_CHECKING:
     from .tools.langchain_tools import LangchainTools
     from .tools.matplotlib_tools import MatplotlibTools
     from .tools.stripe_tools import StripeTools
-    from .tools.yahoo_finance_tools import YahooFinanceTools
 
 
 def __getattr__(name):
@@ -60,7 +59,6 @@ def __getattr__(name):
             ["langchain-core", "langchain-community", "langchain-openai"],
         ),
         "MatplotlibTools": ("matplotlib_tools", ["matplotlib"]),
-        "YahooFinanceTools": ("yahoo_finance_tools", ["yfinance", "yahoofinance"]),
         "FredTools": ("fred_tools", ["fredapi"]),
         "StripeTools": ("stripe_tools", ["stripe", "stripe_agent_toolkit"]),
         "TextToSpeechTools": ("audio_tools", ["elevenlabs", "pygame"]),
@@ -79,7 +77,7 @@ def __getattr__(name):
             missing_packages = " ".join(required_packages)
             print(
                 f"\033[95mError: The required packages ({missing_packages}) are not installed. "
-                f"Please install them using 'pip install {missing_packages}'.\n"
+                f"Please install them using 'pip install {missing_packages}'." + "\n"
                 f"Specific error: {str(e)}\033[0m"
             )
             sys.exit(1)
@@ -94,7 +92,6 @@ __all__ = [
     "Conduct",
     "Compose",
     "TaskInstruction",
-
     # Configuration and Utilities
     "Config",
     "config",
@@ -110,7 +107,6 @@ __all__ = [
     "GeminiModels",
     "DeepseekModels",
     "HuggingFaceModels",
-
     # List core tools
     "FileTools",
     "EmbeddingsTools",
@@ -125,15 +121,12 @@ __all__ = [
     "SemanticSplitter",
     "SentenceSplitter",
     "WhisperTools",
-
     # Optional tools
     "LangchainTools",
     "MatplotlibTools",
-    "YahooFinanceTools",
     "TextToSpeechTools",
     "FredTools",
     "StripeTools",
-
     # Adapters
     "MCPOrchestra",
 ]

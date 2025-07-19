@@ -1,8 +1,11 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+
+from typing import Dict, List, Optional
 
 import requests
-from typing import List, Dict, Optional
+
 from ..utils.braintrust_utils import traced
+
 
 class WikipediaTools:
     @traced(type="tool")
@@ -43,7 +46,7 @@ class WikipediaTools:
             "redirects": "",
             "format": "json",
             "origin": "*",
-            "pithumbsize": "400" if include_images else "0"
+            "pithumbsize": "400" if include_images else "0",
         }
 
         try:
@@ -94,7 +97,7 @@ class WikipediaTools:
             "srsearch": query,
             "srlimit": num_results,
             "format": "json",
-            "origin": "*"
+            "origin": "*",
         }
 
         try:
@@ -106,7 +109,7 @@ class WikipediaTools:
             # Fetch additional details for each search result
             detailed_results = []
             for result in search_results:
-                page_id = result['pageid']
+                page_id = result["pageid"]
                 detailed_params = {
                     "action": "query",
                     "pageids": page_id,
@@ -116,7 +119,7 @@ class WikipediaTools:
                     "explaintext": "",
                     "pithumbsize": "250",
                     "format": "json",
-                    "origin": "*"
+                    "origin": "*",
                 }
                 detailed_response = requests.get(base_url, params=detailed_params)
                 detailed_response.raise_for_status()
@@ -126,7 +129,7 @@ class WikipediaTools:
                 detailed_result = {
                     "title": page_data.get("title"),
                     "fullurl": page_data.get("fullurl"),
-                    "snippet": page_data.get("extract", "")
+                    "snippet": page_data.get("extract", ""),
                 }
                 detailed_results.append(detailed_result)
 
@@ -166,7 +169,7 @@ class WikipediaTools:
             "prop": "pageimages",
             "pithumbsize": thumb_size,
             "format": "json",
-            "origin": "*"
+            "origin": "*",
         }
 
         try:
@@ -220,7 +223,7 @@ class WikipediaTools:
             "pithumbsize": thumb_size,
             "inprop": "url",
             "format": "json",
-            "origin": "*"
+            "origin": "*",
         }
 
         try:
@@ -233,7 +236,7 @@ class WikipediaTools:
                 image_info = {
                     "title": page_data["title"],
                     "url": page_data["fullurl"],
-                    "thumbnail": page_data.get("thumbnail", {}).get("source")
+                    "thumbnail": page_data.get("thumbnail", {}).get("source"),
                 }
                 image_results.append(image_info)
 

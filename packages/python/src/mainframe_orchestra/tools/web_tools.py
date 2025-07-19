@@ -1,20 +1,29 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-import os
 import json
-from typing import Any, List, Dict, Union, Literal, Optional
-from bs4 import BeautifulSoup
-from ..utils.braintrust_utils import traced
-import requests
-import time
+import os
 import random
-from fake_useragent import UserAgent
+import time
+from typing import Any, Dict, List, Literal, Optional, Union
+
+import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from fake_useragent import UserAgent
+
+from ..utils.braintrust_utils import traced
+
 
 class WebTools:
     @traced(type="tool")
     @staticmethod
-    def exa_search(queries: Union[str, List[str]], num_results: int = 10, search_type: str = "neural", num_sentences: int = 5, highlights_per_url: int = 3) -> dict:
+    def exa_search(
+        queries: Union[str, List[str]],
+        num_results: int = 10,
+        search_type: str = "neural",
+        num_sentences: int = 5,
+        highlights_per_url: int = 3,
+    ) -> dict:
         """
         Searches the internet using the Exa search engine and returns a structured response.
 
@@ -65,13 +74,10 @@ class WebTools:
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "x-api-key": api_key  # Use the retrieved API key
+            "x-api-key": api_key,  # Use the retrieved API key
         }
 
-        structured_data = {
-            "queries": queries,
-            "results": []
-        }
+        structured_data = {"queries": queries, "results": []}
 
         for query in queries:
             # Define the payload
@@ -84,9 +90,9 @@ class WebTools:
                     "highlights": {
                         "numSentences": num_sentences,
                         "highlightsPerUrl": highlights_per_url,
-                        "query": query
+                        "query": query,
                     }
-                }
+                },
             }
 
             # Attempt to make the POST request with retries
@@ -95,19 +101,16 @@ class WebTools:
                     response = requests.post(url, headers=headers, json=payload)
                     response.raise_for_status()  # Will raise an exception for HTTP errors
                     # Print the raw response
-                    #print(f"DEBUG: Raw API response for query '{query}': {response.text}")
+                    # print(f"DEBUG: Raw API response for query '{query}': {response.text}")
                     # Restructure and clean up the response data
                     data = response.json()
-                    query_results = {
-                        "query": query,
-                        "data": []
-                    }
+                    query_results = {"query": query, "data": []}
                     for result in data["results"]:
                         structured_result = {
                             "title": result["title"],
                             "url": result["url"],
                             "author": result["author"],
-                            "highlights": "\n".join(result["highlights"])
+                            "highlights": "\n".join(result["highlights"]),
                         }
                         query_results["data"].append(structured_result)
 
@@ -133,7 +136,9 @@ class WebTools:
 
     @traced(type="tool")
     @staticmethod
-    def scrape_urls(urls: Union[str, List[str]], include_html: bool = False, include_links: bool = False) -> List[Dict[str, Any]]:
+    def scrape_urls(
+        urls: Union[str, List[str]], include_html: bool = False, include_links: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         Scrape one or more webpages and return the content.
 
@@ -156,48 +161,55 @@ class WebTools:
 
         for url in urls:
             try:
-                time.sleep(random.uniform(.1, .3))
-                headers = {'User-Agent': ua.random}
+                time.sleep(random.uniform(0.1, 0.3))
+                headers = {"User-Agent": ua.random}
                 response = requests.get(url, headers=headers, timeout=10)
                 response.raise_for_status()
                 response.encoding = response.apparent_encoding
 
-                soup = BeautifulSoup(response.text, 'html.parser')
+                soup = BeautifulSoup(response.text, "html.parser")
 
                 # Remove common non-content elements
-                for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                for element in soup(["script", "style", "nav", "header", "footer", "aside"]):
                     element.decompose()
 
                 # Try to find the main content
-                main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
+                main_content = (
+                    soup.find("main") or soup.find("article") or soup.find("div", class_="content")
+                )
 
                 if main_content:
                     content_soup = main_content
                 else:
                     # If no main content found, use the whole body but remove potential sidebars
-                    content_soup = soup.find('body')
+                    content_soup = soup.find("body")
                     if content_soup:
-                        for sidebar in content_soup(['aside', 'div'], class_=['sidebar', 'widget']):
+                        for sidebar in content_soup(["aside", "div"], class_=["sidebar", "widget"]):
                             sidebar.decompose()
 
-                result: Dict[str, Any] = {'url': url}
+                result: Dict[str, Any] = {"url": url}
 
                 if include_html:
-                    result['content'] = str(content_soup) if content_soup else ''
+                    result["content"] = str(content_soup) if content_soup else ""
                 else:
-                    result['content'] = content_soup.get_text(separator=' ', strip=True) if content_soup else ''
+                    result["content"] = (
+                        content_soup.get_text(separator=" ", strip=True) if content_soup else ""
+                    )
 
                 if include_links:
-                    result['links'] = [a['href'] for a in (content_soup.find_all('a', href=True) if content_soup else [])]
+                    result["links"] = [
+                        a["href"]
+                        for a in (content_soup.find_all("a", href=True) if content_soup else [])
+                    ]
 
                 results.append(result)
 
             except requests.RequestException as e:
-                results.append({'url': url, 'error': f"Error fetching {url}: {str(e)}"})
+                results.append({"url": url, "error": f"Error fetching {url}: {str(e)}"})
             except UnicodeDecodeError as e:
-                results.append({'url': url, 'error': f"Encoding error for {url}: {str(e)}"})
+                results.append({"url": url, "error": f"Encoding error for {url}: {str(e)}"})
             except (AttributeError, ValueError, TypeError) as e:
-                results.append({'url': url, 'error': f"Error processing {url}: {str(e)}"})
+                results.append({"url": url, "error": f"Error processing {url}: {str(e)}"})
 
         return results
 
@@ -208,7 +220,7 @@ class WebTools:
         search_type: Literal["search", "news", "images", "shopping"] = "search",
         num_results: Optional[int] = range(3, 10),
         date_range: Optional[Literal["h", "d", "w", "m", "y"]] = None,
-        location: Optional[str] = None
+        location: Optional[str] = None,
     ) -> Union[str, List[str]]:
         """
         Perform a search using the Serper API and format the results.
@@ -265,10 +277,7 @@ class WebTools:
                 payload["location"] = location
 
             # Prepare headers
-            headers = {
-                "X-API-KEY": api_key,
-                "Content-Type": "application/json"
-            }
+            headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
 
             try:
                 # Make the API call
@@ -286,7 +295,9 @@ class WebTools:
                     for i, result in enumerate(results["organic"], 1):
                         formatted_results += f"{i}. {result.get('title', 'No Title')}\n"
                         formatted_results += f"   URL: {result.get('link', 'No Link')}\n"
-                        formatted_results += f"   Snippet: {result.get('snippet', 'No Snippet')}\n\n"
+                        formatted_results += (
+                            f"   Snippet: {result.get('snippet', 'No Snippet')}\n\n"
+                        )
 
                 if "news" in results:
                     formatted_results += "News Results:\n"
@@ -296,7 +307,9 @@ class WebTools:
                         formatted_results += f"   URL: {news.get('link', 'No Link')}\n"
                         formatted_results += f"   Date: {news.get('date', 'No Date')}\n"
                         formatted_results += f"   Snippet: {news.get('snippet', 'No Snippet')}\n"
-                        formatted_results += f"   Image URL: {news.get('imageUrl', 'No Image URL')}\n\n"
+                        formatted_results += (
+                            f"   Image URL: {news.get('imageUrl', 'No Image URL')}\n\n"
+                        )
 
                 if "images" in results:
                     formatted_results += "Image Results:\n"
@@ -315,9 +328,13 @@ class WebTools:
                 results_list.append(formatted_results.strip())
 
             except requests.RequestException as e:
-                results_list.append(f"Error making request to Serper API for query '{single_query}': {str(e)}")
+                results_list.append(
+                    f"Error making request to Serper API for query '{single_query}': {str(e)}"
+                )
             except json.JSONDecodeError:
-                results_list.append(f"Error decoding JSON response from Serper API for query '{single_query}'")
+                results_list.append(
+                    f"Error decoding JSON response from Serper API for query '{single_query}'"
+                )
 
         return results_list[0] if len(results_list) == 1 else results_list
 
@@ -338,7 +355,7 @@ class WebTools:
             requests.RequestException: If there's an error with the API request.
             json.JSONDecodeError: If the API response cannot be parsed as JSON.
         """
-        #print(f"Attempting to scrape URL(s): {urls}")
+        # print(f"Attempting to scrape URL(s): {urls}")
 
         # Load environment variables
         load_dotenv()
@@ -349,10 +366,7 @@ class WebTools:
             raise ValueError("SERPER_API_KEY environment variable is not set")
 
         serper_url = "https://scrape.serper.dev"
-        headers = {
-            'X-API-KEY': api_key,
-            'Content-Type': 'application/json'
-        }
+        headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
 
         def scrape_single_url(url: str) -> dict:
             payload = json.dumps({"url": url})
@@ -374,7 +388,9 @@ class WebTools:
         elif isinstance(urls, list):
             return [scrape_single_url(url) for url in urls]
         else:
-            raise ValueError("Input must be a string (single URL) or a list of strings (multiple URLs)")
+            raise ValueError(
+                "Input must be a string (single URL) or a list of strings (multiple URLs)"
+            )
 
     @traced(type="tool")
     @staticmethod
@@ -382,7 +398,7 @@ class WebTools:
         query: str,
         max_results: int = 10,
         sort_by: Literal["relevance", "lastUpdatedDate", "submittedDate"] = "relevance",
-        include_abstract: bool = True
+        include_abstract: bool = True,
     ) -> dict:
         """
         Query the Arxiv API and return simplified results for each entry.
@@ -407,7 +423,7 @@ class WebTools:
             "start": 0,
             "max_results": max_results,
             "sortBy": sort_by,
-            "sortOrder": "descending"
+            "sortOrder": "descending",
         }
 
         try:
@@ -418,7 +434,7 @@ class WebTools:
 
             results = {
                 "total_results": int(feed.find("opensearch:totalResults").text),
-                "entries": []
+                "entries": [],
             }
 
             for entry in entries:
@@ -430,7 +446,7 @@ class WebTools:
                     "updated": entry.find("updated").text,
                     "categories": [category["term"] for category in entry.find_all("category")],
                     "primary_category": entry.find("arxiv:primary_category")["term"],
-                    "link": entry.find("link", attrs={"type": "text/html"})["href"]
+                    "link": entry.find("link", attrs={"type": "text/html"})["href"],
                 }
 
                 if include_abstract:
@@ -480,39 +496,41 @@ class WebTools:
             raise ValueError("WEATHER_API_KEY environment variable is not set")
 
         BASE_URL = "http://api.weatherapi.com/v1"
-        endpoint = 'forecast.json'
+        endpoint = "forecast.json"
 
         params = {
-            'key': api_key,
-            'q': location,
-            'aqi': 'yes',
-            'alerts': 'yes',
+            "key": api_key,
+            "q": location,
+            "aqi": "yes",
+            "alerts": "yes",
         }
 
         if forecast_days is not None:
             if not 1 <= forecast_days <= 10:
-                return f"Error: forecast_days must be between 1 and 10. You provided: {forecast_days}"
-            params['forecast_days'] = forecast_days
+                return (
+                    f"Error: forecast_days must be between 1 and 10. You provided: {forecast_days}"
+                )
+            params["forecast_days"] = forecast_days
         elif include_forecast:
-            params['forecast_days'] = 1
+            params["forecast_days"] = 1
 
         try:
             response = requests.get(f"{BASE_URL}/{endpoint}", params=params)
             response.raise_for_status()
             data = response.json()
 
-            if 'error' in data:
+            if "error" in data:
                 raise ValueError(f"API Error: {data['error']['message']}")
         except requests.RequestException as e:
             raise requests.RequestException(f"Error making request to WeatherAPI: {str(e)}")
 
         report = "Forecast:\n"
-        for key, value in data['location'].items():
+        for key, value in data["location"].items():
             report += f"{key}: {value}\n"
 
         if include_current:
             report += "\nCurrent Conditions:\n"
-            for key, value in data['current'].items():
+            for key, value in data["current"].items():
                 if isinstance(value, dict):
                     report += f"{key}:\n"
                     for sub_key, sub_value in value.items():
@@ -522,14 +540,14 @@ class WebTools:
 
             if include_astro:
                 report += "Current Astro:\n"
-                for key, value in data['forecast']['forecastday'][0]['astro'].items():
+                for key, value in data["forecast"]["forecastday"][0]["astro"].items():
                     report += f"  {key}: {value}\n"
 
-        if include_forecast and 'forecast' in data:
+        if include_forecast and "forecast" in data:
             report += "\nForecast:\n"
-            for day in data['forecast']['forecastday']:
+            for day in data["forecast"]["forecastday"]:
                 report += f"\nDate: {day['date']}\n"
-                for key, value in day['day'].items():
+                for key, value in day["day"].items():
                     if isinstance(value, dict):
                         report += f"{key}:\n"
                         for sub_key, sub_value in value.items():
@@ -539,15 +557,15 @@ class WebTools:
 
                 if include_astro:
                     report += "Astro:\n"
-                    for key, value in day['astro'].items():
+                    for key, value in day["astro"].items():
                         report += f"  {key}: {value}\n"
 
                 if include_hourly:
                     report += "Hour by hour:\n"
-                    for hour in day['hour']:
+                    for hour in day["hour"]:
                         report += f"  Time: {hour['time']}\n"
                         for key, value in hour.items():
-                            if key != 'time':
+                            if key != "time":
                                 if isinstance(value, dict):
                                     report += f"    {key}:\n"
                                     for sub_key, sub_value in value.items():
@@ -555,12 +573,11 @@ class WebTools:
                                 else:
                                     report += f"    {key}: {value}\n"
 
-        if include_alerts and 'alerts' in data and 'alert' in data['alerts']:
+        if include_alerts and "alerts" in data and "alert" in data["alerts"]:
             report += "\nWeather Alerts:\n"
-            for alert in data['alerts']['alert']:
+            for alert in data["alerts"]["alert"]:
                 for key, value in alert.items():
                     report += f"{key}: {value}\n"
                 report += "\n"
 
         return report
-

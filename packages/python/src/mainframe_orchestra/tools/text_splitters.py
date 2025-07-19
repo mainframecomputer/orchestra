@@ -1,24 +1,34 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 from typing import List, Union
-import numpy as np
-from dotenv import load_dotenv
-from .embedding_tools import EmbeddingsTools
-from ..utils.braintrust_utils import traced
+
 import igraph as ig
 import leidenalg as la
+import numpy as np
+from dotenv import load_dotenv
 from sentence_splitter import SentenceSplitter as ExternalSentenceSplitter
+
+from ..utils.braintrust_utils import traced
+from .embedding_tools import EmbeddingsTools
+
 load_dotenv()
 
+
 class SemanticSplitter:
-    def __init__(self, embedding_provider: str = "openai", embedding_model: str = "text-embedding-3-small"):
+    def __init__(
+        self, embedding_provider: str = "openai", embedding_model: str = "text-embedding-3-small"
+    ):
         self.embedding_provider = embedding_provider
         self.embedding_model = embedding_model
 
     @traced(type="tool")
     @staticmethod
-    def chunk_text(text: Union[str, List[str]], rearrange: bool = False,
-                   embedding_provider: str = "openai", embedding_model: str = "text-embedding-3-small") -> List[str]:
+    def chunk_text(
+        text: Union[str, List[str]],
+        rearrange: bool = False,
+        embedding_provider: str = "openai",
+        embedding_model: str = "text-embedding-3-small",
+    ) -> List[str]:
         splitter = SemanticSplitter(embedding_provider, embedding_model)
 
         if isinstance(text, str):
@@ -50,7 +60,9 @@ class SemanticSplitter:
 
     @traced(type="tool")
     def _embed_segments(self, segments: List[str]) -> np.ndarray:
-        embeddings, _ = EmbeddingsTools.get_embeddings(segments, self.embedding_provider, self.embedding_model)
+        embeddings, _ = EmbeddingsTools.get_embeddings(
+            segments, self.embedding_provider, self.embedding_model
+        )
         return np.array(embeddings)
 
     @traced(type="tool")
@@ -70,7 +82,9 @@ class SemanticSplitter:
         return communities
 
     @traced(type="tool")
-    def _create_chunks_from_communities(self, segments: List[str], communities: List[int], rearrange: bool) -> List[str]:
+    def _create_chunks_from_communities(
+        self, segments: List[str], communities: List[int], rearrange: bool
+    ) -> List[str]:
         if rearrange:
             community_groups = {}
             for segment, community in zip(segments, communities):
@@ -78,7 +92,7 @@ class SemanticSplitter:
                     community_groups[community] = []
                 community_groups[community].append(segment)
 
-            chunks = [' '.join(group).strip() for group in community_groups.values() if group]
+            chunks = [" ".join(group).strip() for group in community_groups.values() if group]
         else:
             chunks = []
             current_community = communities[0]
@@ -86,40 +100,41 @@ class SemanticSplitter:
 
             for segment, community in zip(segments, communities):
                 if community != current_community:
-                    chunks.append(' '.join(current_chunk).strip())
+                    chunks.append(" ".join(current_chunk).strip())
                     current_chunk = []
                     current_community = community
                 current_chunk.append(segment)
 
             if current_chunk:
-                chunks.append(' '.join(current_chunk).strip())
+                chunks.append(" ".join(current_chunk).strip())
 
         return [chunk for chunk in chunks if chunk]
 
     @traced(type="tool")
     def _identify_breakpoints(self, communities: List[int]) -> List[int]:
-        return [i for i in range(1, len(communities)) if communities[i] != communities[i-1]]
+        return [i for i in range(1, len(communities)) if communities[i] != communities[i - 1]]
 
     @traced(type="tool")
-    def _create_similarity_graph(self, embeddings: np.ndarray, similarity_threshold: float) -> ig.Graph:
+    def _create_similarity_graph(
+        self, embeddings: np.ndarray, similarity_threshold: float
+    ) -> ig.Graph:
         similarities = np.dot(embeddings, embeddings.T)
         np.fill_diagonal(similarities, 0)
         similarities = np.maximum(similarities, 0)
-        similarities = (similarities - np.min(similarities)) / (np.max(similarities) - np.min(similarities))
+        similarities = (similarities - np.min(similarities)) / (
+            np.max(similarities) - np.min(similarities)
+        )
 
         adjacency_matrix = (similarities >= similarity_threshold).astype(int)
 
         G = ig.Graph.Adjacency(adjacency_matrix.tolist())
-        G.es['weight'] = similarities[np.where(adjacency_matrix)]
+        G.es["weight"] = similarities[np.where(adjacency_matrix)]
         return G
 
     @traced(type="tool")
     def _find_optimal_partition(self, G: ig.Graph, resolution: float) -> la.VertexPartition:
         return la.find_partition(
-            G,
-            la.CPMVertexPartition,
-            weights='weight',
-            resolution_parameter=resolution
+            G, la.CPMVertexPartition, weights="weight", resolution_parameter=resolution
         )
 
     @traced(type="tool")
@@ -140,10 +155,13 @@ class SemanticSplitter:
 
         return new_membership
 
+
 class SentenceSplitter:
     @traced(type="tool")
     @staticmethod
-    def split_text_by_sentences(text: str, chunk_size: int = 5, overlap: int = 1, language: str = 'en') -> List[str]:
+    def split_text_by_sentences(
+        text: str, chunk_size: int = 5, overlap: int = 1, language: str = "en"
+    ) -> List[str]:
         """
         Split the text into chunks of sentences with overlap.
 
@@ -158,8 +176,10 @@ class SentenceSplitter:
         chunks = []
 
         for i in range(0, len(sentences), chunk_size - overlap):
-            chunk = ' '.join(sentences[i:i + chunk_size])
+            chunk = " ".join(sentences[i : i + chunk_size])
             chunks.append(chunk.strip())
 
-        print(f"Created {len(chunks)} chunks with {chunk_size} sentences each and {overlap} sentence overlap")
+        print(
+            f"Created {len(chunks)} chunks with {chunk_size} sentences each and {overlap} sentence overlap"
+        )
         return chunks

@@ -1,14 +1,16 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 import json
-from typing import List, Callable, Any
 from datetime import datetime
-from typing import Optional
 from multiprocessing import Queue
+from typing import Any, Callable, List, Optional
+
 from pydantic import BaseModel
-from .task import Task
+
 from .agent import Agent
+from .task import Task
 from .utils.logging_config import logger
+
 
 class TaskInstruction(BaseModel):
     task_id: str
@@ -30,9 +32,15 @@ class Conduct:
             }
 
             # Format available agents string with their tools
-            available_agents = "No agents have been installed yet. Notify the user to install or add some agents first." if not agents else "\n            ".join(
-                f"- {agent_id}\n    ({agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])})"
-                for agent_id in sorted(agent_map.keys())
+            available_agents = (
+                "No agents have been installed yet. Notify the user to install or add some agents first."
+                if not agents
+                else "\n            ".join(
+                    f"- {agent_id}"
+                    + "\n    "
+                    + f"({agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])})"
+                    for agent_id in sorted(agent_map.keys())
+                )
             )
 
             async def conduct_tool(
@@ -41,7 +49,7 @@ class Conduct:
                 logger.debug(f"Starting conduct delegation with {len(tasks)} tasks")
 
                 # Add max iteration limits
-                MAX_AGENT_ITERATIONS = 3  # Maximum times an agent can attempt to complete a task
+                MAX_AGENT_ITERATIONS = 15  # Maximum times an agent can attempt to complete a task
 
                 messages = kwargs.get("messages", [])
                 current_time = datetime.now().isoformat()
@@ -82,12 +90,12 @@ class Conduct:
 
                     # Add progress logging
                     current_task_index = tasks.index(instruction_item) + 1
-                    logger.info(f"Processing task {current_task_index} of {len(tasks)}: '{task.task_id}' with agent '{task.agent_id}'")
+                    logger.info(
+                        f"Processing task {current_task_index} of {len(tasks)}: '{task.task_id}' with agent '{task.agent_id}'"
+                    )
 
                     target_agent = agent_map.get(task.agent_id)
-                    logger.debug(
-                        f"Processing task '{task.task_id}' with agent '{task.agent_id}'"
-                    )
+                    logger.debug(f"Processing task '{task.task_id}' with agent '{task.agent_id}'")
 
                     if not target_agent:
                         logger.warning(
@@ -104,6 +112,9 @@ class Conduct:
                         continue
 
                     # Initialize messages with system message for this specific agent
+                    additional_context = (
+                        "\nAdditional context: " + parent_context if parent_context else ""
+                    )
                     messages = [
                         {
                             "role": "system",
@@ -111,16 +122,16 @@ class Conduct:
                                 f"You are {target_agent.role}. "
                                 f"Your goal is {target_agent.goal}"
                                 f"{' Your attributes are: ' + target_agent.attributes if target_agent.attributes and target_agent.attributes.strip() else ''}"
-                                f"{'\nAdditional context: ' + parent_context if parent_context else ''}"
+                                f"{additional_context}"
                             ).strip(),
                         }
                     ]
 
-                    logger.debug(f"\nStarting task for agent: {task.agent_id}")
+                    logger.debug("\nStarting task for agent: " + task.agent_id)
                     instruction_text = task.instruction + (
                         "\n\nUse the following information from previous tasks:\n\n"
                         + "\n\n".join(
-                            f"Results from task '{dep_id}':\n{all_results[dep_id]}"
+                            f"Results from task '{dep_id}':" + "\n" + all_results[dep_id]
                             for dep_id in task.use_output_from
                             if dep_id in all_results
                         )
@@ -129,7 +140,9 @@ class Conduct:
                     )
 
                     async def nested_callback(result):
-                        if isinstance(result, dict) and (result.get("tool") or result.get("type") == "delegation_result"):
+                        if isinstance(result, dict) and (
+                            result.get("tool") or result.get("type") == "delegation_result"
+                        ):
                             current_time = datetime.now().isoformat()
 
                             # Ensure any existing timestamp is serializable
@@ -207,7 +220,7 @@ class Conduct:
                         messages=messages,
                         tool_summaries=tool_summaries,
                         pre_execute=kwargs.get("pre_execute"),
-                        context=parent_context  # Pass the parent context to the delegated task
+                        context=parent_context,  # Pass the parent context to the delegated task
                     )
 
                     # Generate a delegation result event after task completion
@@ -215,30 +228,42 @@ class Conduct:
                         "type": "delegation_result",
                         "content": task_result,
                         "agent_id": target_agent.agent_id,
-                        "conducted_task_id": task.task_id
+                        "conducted_task_id": task.task_id,
                     }
                     await nested_callback(delegation_result)
 
                     # Include context in the result
                     context = "\n\n".join(
-                        f"Results from task '{dep_id}':\n{all_results[dep_id]}"
+                        f"Results from task '{dep_id}':" + "\n" + all_results[dep_id]
                         for dep_id in task.use_output_from
                         if dep_id in all_results
                     )
                     all_results[task.task_id] = (
-                        f"{context}\n\n{task_result}" if context else task_result
+                        context + "\n\n" + task_result if context else task_result
                     )
 
                 # Return results as JSON structure
-                return json.dumps([
-                    {
-                        "task_id": task_id,
-                        "agent": next((item['agent_id'] for item in tasks if item['task_id'] == task_id), ''),
-                        "instruction": next((item['instruction'] for item in tasks if item['task_id'] == task_id), ''),
-                        "result": result
-                    }
-                    for task_id, result in all_results.items()
-                ])
+                return json.dumps(
+                    [
+                        {
+                            "task_id": task_id,
+                            "agent": next(
+                                (item["agent_id"] for item in tasks if item["task_id"] == task_id),
+                                "",
+                            ),
+                            "instruction": next(
+                                (
+                                    item["instruction"]
+                                    for item in tasks
+                                    if item["task_id"] == task_id
+                                ),
+                                "",
+                            ),
+                            "result": result,
+                        }
+                        for task_id, result in all_results.items()
+                    ]
+                )
 
             conduct_tool.__name__ = "conduct_tool"
             conduct_tool.__doc__ = f"""Tool function to orchestrate multiple agents in a single, coordinated multi-agent flow. Tasks should be submitted in a single list, and they will be executed in the order they are submitted. Do not make separate calls to the tool.
@@ -291,7 +316,9 @@ class Compose:
             }
             # Format available agents string
             available_agents = "\n            ".join(
-                f"- {agent_id}\n    ({agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])})"
+                f"- {agent_id}"
+                + "\n    "
+                + f"({agent_id}'s tools: {', '.join(agent_tools[agent_id] or ['No tools'])})"
                 for agent_id in sorted(agent_map.keys())
             )
 

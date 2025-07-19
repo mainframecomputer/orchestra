@@ -7,23 +7,23 @@ This module provides a client for connecting to MCP servers and converting their
 tools into Orchestra-compatible callables that can be used in Orchestra Tasks.
 """
 
+import json
+import subprocess
+import time
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import Any, Callable, Dict, List, Optional, Set, Literal, Awaitable
-import subprocess
-import json
-import time
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Set
+
 from mcp import ClientSession, StdioServerParameters, stdio_client
-from mcp.types import (
-    Tool as MCPTool,
-    CallToolResult,
-    TextContent
-)
 from mcp.client.sse import sse_client
+from mcp.types import CallToolResult, TextContent
+from mcp.types import Tool as MCPTool
+
 from ..utils.logging_config import logger
 
 # Type hint for the metadata provider
 MetadataProvider = Callable[[], Awaitable[Dict[str, Any]]]
+
 
 class MCPOrchestra:
     """
@@ -143,11 +143,7 @@ class MCPOrchestra:
 
                 full_command = [command] + args
                 server_process = subprocess.Popen(
-                    full_command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    env=env
+                    full_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
                 )
                 self.server_processes[server_name] = server_process
                 logger.debug(f"Server process started with PID: {server_process.pid}")
@@ -169,9 +165,7 @@ class MCPOrchestra:
             )
 
             # Establish connection
-            stdio_transport = await self.exit_stack.enter_async_context(
-                stdio_client(server_params)
-            )
+            stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
             read, write = stdio_transport
             session = await self.exit_stack.enter_async_context(ClientSession(read, write))
 
@@ -220,10 +214,12 @@ class MCPOrchestra:
             # Capture the metadata_provider specific to this server connection
             def create_tool_function(name=tool_name, sess=session, provider=metadata_provider):
                 async def tool_callable(**kwargs):
-                    tool_args = kwargs # Start with user-provided arguments
+                    tool_args = kwargs  # Start with user-provided arguments
                     if provider:
                         metadata_dict = await provider()
-                        if metadata_dict: # Add metadata under "metadata" if provider returned something
+                        if (
+                            metadata_dict
+                        ):  # Add metadata under "metadata" if provider returned something
                             if "metadata" not in tool_args:
                                 tool_args["metadata"] = {}
                             tool_args["metadata"].update(metadata_dict)
@@ -291,7 +287,11 @@ class MCPOrchestra:
             if "properties" in tool.inputSchema:
                 for prop_name, prop_info in tool.inputSchema["properties"].items():
                     # Handle string representation of JSON
-                    if isinstance(prop_info, str) and prop_info.startswith("{") and prop_info.endswith("}"):
+                    if (
+                        isinstance(prop_info, str)
+                        and prop_info.startswith("{")
+                        and prop_info.endswith("}")
+                    ):
                         try:
                             # Try to parse the string as JSON
                             prop_data = json.loads(prop_info)
@@ -384,11 +384,12 @@ class MCPOrchestra:
                 process.wait(timeout=5)  # Wait up to 5 seconds for graceful termination
                 logger.debug(f"Server process for {server_name} terminated gracefully")
             except subprocess.TimeoutExpired:
-                logger.debug(f"Server process for {server_name} did not terminate gracefully, forcing kill")
+                logger.debug(
+                    f"Server process for {server_name} did not terminate gracefully, forcing kill"
+                )
                 process.kill()  # Force kill if it doesn't terminate gracefully
                 process.wait()
                 logger.debug(f"Server process for {server_name} killed")
-
 
     async def close_session(self, server_name: str) -> None:
         """
@@ -431,8 +432,9 @@ class MCPOrchestra:
         # The AsyncExitStack will handle closing the underlying transport
         # (stdio or sse) when the MCPOrchestra instance's `close` or `__aexit__`
         # is called. This ensures proper resource cleanup in the correct context.
-        logger.debug(f"Session {server_name} removed from tracking. Actual close deferred to AsyncExitStack.")
-
+        logger.debug(
+            f"Session {server_name} removed from tracking. Actual close deferred to AsyncExitStack."
+        )
 
         # Also terminate the server process if we started it
         if server_name in self.server_processes:
@@ -443,13 +445,14 @@ class MCPOrchestra:
                 process.wait(timeout=5)
                 logger.info(f"Server process for {server_name} terminated gracefully")
             except subprocess.TimeoutExpired:
-                logger.debug(f"Server process for {server_name} did not terminate gracefully, forcing kill")
+                logger.debug(
+                    f"Server process for {server_name} did not terminate gracefully, forcing kill"
+                )
                 process.kill()
                 process.wait()
                 logger.info(f"Server process for {server_name} killed")
         else:
             logger.debug(f"No server process found for {server_name}")
-
 
     async def __aenter__(self) -> "MCPOrchestra":
         """Support for async context manager."""
@@ -512,7 +515,11 @@ class MCPOrchestra:
                     if isinstance(tool.inputSchema, dict) and "properties" in tool.inputSchema:
                         for prop_name, prop_info in tool.inputSchema["properties"].items():
                             # Handle string representation of JSON if needed
-                            if isinstance(prop_info, str) and prop_info.startswith("{") and prop_info.endswith("}"):
+                            if (
+                                isinstance(prop_info, str)
+                                and prop_info.startswith("{")
+                                and prop_info.endswith("}")
+                            ):
                                 try:
                                     # Try to parse the string as a dictionary
                                     prop_info = json.loads(prop_info)
@@ -527,7 +534,10 @@ class MCPOrchestra:
                                 prop_type = "unknown"
                                 prop_desc = str(prop_info)
 
-                            required = "required" in tool.inputSchema and prop_name in tool.inputSchema["required"]
+                            required = (
+                                "required" in tool.inputSchema
+                                and prop_name in tool.inputSchema["required"]
+                            )
                             req_str = " (required)" if required else ""
 
                             result.append(f"     - {prop_name}{req_str} ({prop_type}): {prop_desc}")

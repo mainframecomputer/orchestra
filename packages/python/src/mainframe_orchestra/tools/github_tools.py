@@ -1,8 +1,13 @@
-from typing import Dict, Any, List, Optional
-import requests
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+
 import base64
 import os
+from typing import Any, Dict, List, Optional
+
+import requests
+
 from ..utils.braintrust_utils import traced
+
 
 # Define custom tools
 class GitHubTools:
@@ -19,8 +24,8 @@ class GitHubTools:
         Raises:
             ValueError: If required environment variables are not set
         """
-        owner = os.getenv('GITHUB_OWNER')
-        repo = os.getenv('GITHUB_REPO')
+        owner = os.getenv("GITHUB_OWNER")
+        repo = os.getenv("GITHUB_REPO")
 
         if not owner or not repo:
             raise ValueError("GITHUB_OWNER and GITHUB_REPO environment variables must be set")
@@ -39,13 +44,12 @@ class GitHubTools:
                                 Use for operations that always need authentication.
         """
         headers = {"Accept": "application/vnd.github+json"}
-        token = os.getenv('GITHUB_TOKEN')
+        token = os.getenv("GITHUB_TOKEN")
         if auth_required and not token:
             raise ValueError("This operation requires GITHUB_TOKEN environment variable")
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return headers
-
 
     @traced(type="tool")
     @staticmethod
@@ -160,14 +164,16 @@ class GitHubTools:
         response.raise_for_status()
         data = response.json()
         return {
-            "content": base64.b64decode(data["content"]).decode('utf-8'),
+            "content": base64.b64decode(data["content"]).decode("utf-8"),
             "path": data["path"],
-            "name": data["name"]
+            "name": data["name"],
         }
 
     @traced(type="tool")
     @staticmethod
-    def search_repositories(query: str, sort: str = "stars", max_results: int = 10) -> Dict[str, Any]:
+    def search_repositories(
+        query: str, sort: str = "stars", max_results: int = 10
+    ) -> Dict[str, Any]:
         """
         Search for repositories on GitHub.
 
@@ -185,12 +191,7 @@ class GitHubTools:
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
         url = f"{base_url}/search/repositories"
-        params = {
-            "q": query,
-            "sort": sort,
-            "order": "desc",
-            "per_page": min(max_results, 100)
-        }
+        params = {"q": query, "sort": sort, "order": "desc", "per_page": min(max_results, 100)}
 
         response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
@@ -199,12 +200,14 @@ class GitHubTools:
         return {
             "total_count": data["total_count"],
             "incomplete_results": data["incomplete_results"],
-            "items": data["items"][:max_results]
+            "items": data["items"][:max_results],
         }
 
     @traced(type="tool")
     @staticmethod
-    def search_code(query: str, owner: str = None, repo: str = None, max_results: int = 10) -> Dict[str, Any]:
+    def search_code(
+        query: str, owner: str = None, repo: str = None, max_results: int = 10
+    ) -> Dict[str, Any]:
         """
         Search for code on GitHub.
 
@@ -233,10 +236,7 @@ class GitHubTools:
             query = f"{query} user:{owner}"
 
         url = f"{base_url}/search/code"
-        params = {
-            "q": query,
-            "per_page": min(max_results, 100)
-        }
+        params = {"q": query, "per_page": min(max_results, 100)}
 
         response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
@@ -245,7 +245,7 @@ class GitHubTools:
         return {
             "total_count": data["total_count"],
             "incomplete_results": data["incomplete_results"],
-            "items": data["items"][:max_results]
+            "items": data["items"][:max_results],
         }
 
     @traced(type="tool")
@@ -281,20 +281,11 @@ class GitHubTools:
                 "created_at": pr["created_at"],
                 "updated_at": pr["updated_at"],
                 "html_url": pr["html_url"],
-                "user": {
-                    "login": pr["user"]["login"],
-                    "id": pr["user"]["id"]
-                },
-                "head": {
-                    "ref": pr["head"]["ref"],
-                    "sha": pr["head"]["sha"]
-                },
-                "base": {
-                    "ref": pr["base"]["ref"],
-                    "sha": pr["base"]["sha"]
-                },
+                "user": {"login": pr["user"]["login"], "id": pr["user"]["id"]},
+                "head": {"ref": pr["head"]["ref"], "sha": pr["head"]["sha"]},
+                "base": {"ref": pr["base"]["ref"], "sha": pr["base"]["sha"]},
                 "mergeable_state": pr.get("mergeable_state"),
-                "draft": pr["draft"]
+                "draft": pr["draft"],
             }
 
         return [simplify_pr(pr) for pr in response.json()]
@@ -343,7 +334,9 @@ class GitHubTools:
         GitHubTools.configure()
         base_url = "https://api.github.com"
         headers = GitHubTools._get_headers()
-        url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls/{pull_number}/commits"
+        url = (
+            f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls/{pull_number}/commits"
+        )
 
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -355,9 +348,9 @@ class GitHubTools:
                 "author": {
                     "name": commit["commit"]["author"]["name"],
                     "email": commit["commit"]["author"]["email"],
-                    "date": commit["commit"]["author"]["date"]
+                    "date": commit["commit"]["author"]["date"],
                 },
-                "url": commit["html_url"]
+                "url": commit["html_url"],
             }
 
         return [simplify_commit(commit) for commit in response.json()]
@@ -395,7 +388,7 @@ class GitHubTools:
                 "changes": file["changes"],
                 "blob_url": file["blob_url"],
                 "raw_url": file["raw_url"],
-                "patch": file.get("patch")
+                "patch": file.get("patch"),
             }
 
         return [simplify_file(file) for file in response.json()]
@@ -420,10 +413,10 @@ class GitHubTools:
         contents = GitHubTools.get_repo_contents(path)
         structure = {}
         for item in contents:
-            if item['type'] == 'dir':
-                structure[item['name']] = GitHubTools.get_directory_structure(item['path'])
+            if item["type"] == "dir":
+                structure[item["name"]] = GitHubTools.get_directory_structure(item["path"])
             else:
-                structure[item['name']] = item['type']
+                structure[item["name"]] = item["type"]
         return structure
 
     @traced(type="tool")
@@ -455,14 +448,17 @@ class GitHubTools:
         if not isinstance(contents, list):
             contents = [contents]
 
-        return [{
-            "name": item["name"],
-            "path": item["path"],
-            "sha": item["sha"],
-            "type": item["type"],
-            "size": item.get("size"),
-            "download_url": item.get("download_url")
-        } for item in contents]
+        return [
+            {
+                "name": item["name"],
+                "path": item["path"],
+                "sha": item["sha"],
+                "type": item["type"],
+                "size": item.get("size"),
+                "download_url": item.get("download_url"),
+            }
+            for item in contents
+        ]
 
     @traced(type="tool")
     @staticmethod
@@ -489,11 +485,11 @@ class GitHubTools:
         data = response.json()
 
         return {
-            "content": base64.b64decode(data["content"]).decode('utf-8'),
+            "content": base64.b64decode(data["content"]).decode("utf-8"),
             "sha": data["sha"],
             "size": data["size"],
             "name": data["name"],
-            "path": data["path"]
+            "path": data["path"],
         }
 
     @traced(type="tool")
@@ -517,7 +513,9 @@ class GitHubTools:
         headers = GitHubTools._get_headers()
 
         # Get issue details
-        issue_url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/issues/{issue_number}"
+        issue_url = (
+            f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/issues/{issue_number}"
+        )
         issue_response = requests.get(issue_url, headers=headers)
         issue_response.raise_for_status()
         issue_data = issue_response.json()
@@ -531,14 +529,11 @@ class GitHubTools:
         def simplify_data(data: Dict[str, Any], is_issue: bool = False) -> Dict[str, Any]:
             return {
                 "id": data["id"],
-                "user": {
-                    "login": data["user"]["login"],
-                    "id": data["user"]["id"]
-                },
+                "user": {"login": data["user"]["login"], "id": data["user"]["id"]},
                 "created_at": data["created_at"],
                 "updated_at": data["updated_at"],
                 "body": data["body"],
-                "type": "issue" if is_issue else "comment"
+                "type": "issue" if is_issue else "comment",
             }
 
         result = [simplify_data(issue_data, is_issue=True)]
@@ -605,12 +600,9 @@ class GitHubTools:
                 "created_at": issue["created_at"],
                 "updated_at": issue["updated_at"],
                 "html_url": issue["html_url"],
-                "user": {
-                    "login": issue["user"]["login"],
-                    "id": issue["user"]["id"]
-                },
+                "user": {"login": issue["user"]["login"], "id": issue["user"]["id"]},
                 "comments": issue["comments"],
-                "pull_request": "pull_request" in issue
+                "pull_request": "pull_request" in issue,
             }
 
         return [simplify_issue(issue) for issue in response.json()]
@@ -652,13 +644,9 @@ class GitHubTools:
         # Process the response
         result = {
             "files_changed": [],
-            "total_changes": {
-                "additions": 0,
-                "deletions": 0,
-                "changes": 0
-            },
+            "total_changes": {"additions": 0, "deletions": 0, "changes": 0},
             "diff": "",
-            "commits": []
+            "commits": [],
         }
 
         # Get diff content if specific file is requested
@@ -686,11 +674,13 @@ class GitHubTools:
 
         # Process commits
         for commit in data.get("commits", []):
-            result["commits"].append({
-                "sha": commit["sha"],
-                "message": commit["commit"]["message"],
-                "author": commit["commit"]["author"]["name"]
-            })
+            result["commits"].append(
+                {
+                    "sha": commit["sha"],
+                    "message": commit["commit"]["message"],
+                    "author": commit["commit"]["author"]["name"],
+                }
+            )
 
         return result
 
@@ -732,7 +722,7 @@ class GitHubTools:
         data = {
             "message": message,
             "content": base64.b64encode(content.encode()).decode(),
-            "branch": branch
+            "branch": branch,
         }
 
         if sha:
@@ -794,10 +784,7 @@ class GitHubTools:
 
         # Create new branch
         create_url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/git/refs"
-        data = {
-            "ref": f"refs/heads/{branch_name}",
-            "sha": base_sha
-        }
+        data = {"ref": f"refs/heads/{branch_name}", "sha": base_sha}
 
         response = requests.post(create_url, headers=headers, json=data)
         response.raise_for_status()
@@ -840,7 +827,7 @@ class GitHubTools:
         data = {
             "message": message,
             "content": base64.b64encode(content.encode()).decode(),
-            "branch": branch
+            "branch": branch,
         }
 
         if sha:
@@ -874,14 +861,8 @@ class GitHubTools:
         headers = GitHubTools._get_headers(auth_required=True)
         url = f"{base_url}/repos/{GitHubTools._owner}/{GitHubTools._repo}/pulls"
 
-        data = {
-            "title": title,
-            "body": body,
-            "head": head,
-            "base": base
-        }
+        data = {"title": title, "body": body, "head": head, "base": base}
 
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         return response.json()
-

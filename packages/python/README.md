@@ -52,6 +52,8 @@ Mainframe-Orchestra is a lightweight, open-source agentic framework for building
 - **Tool Integration**: Simple docstring-based tool definitions without complex JSON schemas
 - **Streaming Support**: Real-time output streaming with both sync and async support
 - **Built-in Fallbacks**: Graceful handling of LLM failures with configurable fallback chains
+- **Unified LLM Interface**: Powered by LiteLLM for integration with 100+ language models from all major providers
+- **Universal Function Calling**: Orchestra's Task system enables function calling for any model, including open-source models that don't natively support function calling
 
 ## Installation
 
@@ -74,7 +76,7 @@ research_agent = Agent(
     agent_id="research_assistant_1",
     role="research assistant",
     goal="answer user queries",
-    llm=OpenaiModels.gpt_4o,
+    llm=OpenaiModels.gpt_4_1,
     tools={WebTools.exa_search}
 )
 
@@ -100,7 +102,7 @@ print(result)
 
 ## Supported Language Models and Providers
 
-Orchestra supports a wide range of language models from a number of providers:
+Orchestra uses **LiteLLM** to support a wide range of language models from multiple providers:
 
 ### OpenAI
 GPT-4.5-preview, GPT-4o, GPT-4o Mini, & Custom defined models
@@ -117,7 +119,7 @@ from mainframe_orchestra.llm import OpenaiModels
 OpenaiModels.set_base_url("https://your-custom-endpoint.com/v1")
 
 # Method 3: Set for a specific request
-response, error = await OpenaiModels.gpt_4o(
+response, error = await OpenaiModels.gpt_4_1(
     messages=[{"role": "user", "content": "Hello"}],
     base_url="https://your-custom-endpoint.com/v1"
 )
@@ -144,7 +146,7 @@ Gemini 1.5 Flash, Gemini 1.5 Flash 8B, Gemini 1.5 Pro, & Custom defined models
 ### Deepseek
 Deepseek Reasoner, Deepseek Chat, & Custom defined models
 
-Each provider is accessible through a dedicated class (e.g., `OpenaiModels`, `AnthropicModels`, etc.) with methods corresponding to specific models. This structure allows for painless switching between models and providers, enabling users to leverage the most suitable LLM for their tasks.
+Each provider is accessible through a dedicated class (e.g., `OpenaiModels`, `AnthropicModels`, etc.) with methods corresponding to specific models. This structure allows for switching between models and providers, enabling users to leverage the most suitable LLM for their tasks.
 
 ## Tools
 
@@ -167,10 +169,11 @@ Mainframe-Orchestra comes with a comprehensive set of built-in tools that provid
 - **LinearTools**: Linear API-based tools for creating, updating, and retrieving tasks
 
 #### Financial & Data Analysis
-- **YahooFinanceTools**: Stock market data and financial analysis
 - **FredTools**: Federal Reserve Economic Data access
 - **CalculatorTools**: Date, time, and mathematical calculations
 - **MatplotlibTools**: Data visualization and plotting
+
+> **Note**: `YahooFinanceTools` was deprecated in v1.0.0 due to upstream API instability. For financial data, consider using `FredTools` for economic data or web tools.
 
 #### Media & Content
 - **AudioTools**: Audio processing and manipulation
@@ -224,78 +227,59 @@ For detailed documentation on creating custom tools, including best practices fo
 
 ## Multi-Agent Teams
 
-Mainframe-Orchestra allows you to create multi-agent teams that can use tools to complete a series of tasks. Here's an example of a finance agent that uses multiple agents to analyze a stock:
+Mainframe-Orchestra allows you to create multi-agent teams that can use tools to complete a series of tasks. Here's an example of a GitHub/Linear integration team that automatically manages issue tracking:
 
 ```python
-from mainframe_orchestra import Task, Agent, Conduct, OpenaiModels, WebTools, YahooFinanceTools
+from mainframe_orchestra import Task, Agent, Conduct, OpenaiModels, GitHubTools, LinearTools
+
+# Initialize tool instances
+linear_tools = LinearTools()
 
 # Create specialized agents
-market_analyst = Agent(
-    agent_id="market_analyst",
-    role="Market Microstructure Analyst",
-    goal="Analyze market microstructure and identify trading opportunities",
-    attributes="You have expertise in market microstructure, order flow analysis, and high-frequency data.",
-    llm=OpenaiModels.gpt_4o,
-    tools={YahooFinanceTools.calculate_returns, YahooFinanceTools.get_historical_data}
+github_agent = Agent(
+    agent_id="github_agent",
+    role="GitHub Issue Analyzer",
+    goal="Analyze GitHub issues, pull requests, and repository activity",
+    attributes="You have expertise in analyzing code repositories and GitHub workflows.",
+    llm=OpenaiModels.gpt_4_1,
+    tools=[GitHubTools.get_issue, GitHubTools.list_issues, GitHubTools.get_pull_request]
 )
 
-fundamental_analyst = Agent(
-    agent_id="fundamental_analyst",
-    role="Fundamental Analyst",
-    goal="Analyze company financials and assess intrinsic value",
-    attributes="You have expertise in financial statement analysis, valuation models, and industry analysis.",
-    llm=OpenaiModels.gpt_4o,
-    tools={YahooFinanceTools.get_financials, YahooFinanceTools.get_ticker_info}
+linear_agent = Agent(
+    agent_id="linear_agent",
+    role="Linear Project Manager", 
+    goal="Manage Linear tickets and workflow states",
+    attributes="You have expertise in project management and Linear workflows.",
+    llm=OpenaiModels.gpt_4_1,
+    tools=[
+        linear_tools.get_team_issues,
+        linear_tools.search_issues,
+        linear_tools.create_issue,
+        linear_tools.update_issue_status
+    ]
 )
 
-technical_analyst = Agent(
-    agent_id="technical_analyst",
-    role="Technical Analyst",
-    goal="Analyze price charts and identify trading patterns",
-    attributes="You have expertise in technical analysis, chart patterns, and technical indicators.",
-    llm=OpenaiModels.gpt_4o,
-    tools={YahooFinanceTools.get_historical_data}
+coordinator_agent = Agent(
+    agent_id="coordinator_agent",
+    role="Integration Coordinator",
+    goal="Coordinate between GitHub and Linear for seamless issue tracking",
+    attributes="You have expertise in coordinating development workflows across platforms.",
+    llm=OpenaiModels.gpt_4_1,
+    tools=[Conduct.conduct_tool(github_agent, linear_agent)]
 )
 
-sentiment_analyst = Agent(
-    agent_id="sentiment_analyst",
-    role="Sentiment Analyst",
-    goal="Analyze market sentiment, analyst recommendations and news trends",
-    attributes="You have expertise in market sentiment analysis.",
-    llm=OpenaiModels.gpt_4o,
-    tools={YahooFinanceTools.get_recommendations, WebTools.serper_search}
-)
-
-conductor_agent = Agent(
-    agent_id="conductor_agent",
-    role="Conductor",
-    goal="Conduct the orchestra",
-    attributes="You have expertise in orchestrating the agents in your team.",
-    llm=OpenaiModels.gpt_4o,
-    tools=[Conduct.conduct_tool(market_analyst, fundamental_analyst, technical_analyst, sentiment_analyst)]
-)
-
-def chat_task(conversation_history, userinput):
+def integration_task(github_issue_url):
     return Task.create(
-        agent=conductor_agent,
-        messages=conversation_history,
-        instruction=userinput
+        agent=coordinator_agent,
+        instruction=f"Analyze the GitHub issue at {github_issue_url} and create or update the corresponding Linear ticket with relevant details and status."
     )
 
-def main():
-    conversation_history = []
-    while True:
-        userinput = input("You: ")
-        conversation_history.append({"role": "user", "content": userinput})
-        response = chat_task(conversation_history, userinput)
-        conversation_history.append({"role": "assistant", "content": response})
-        print(f"Market Analyst: {response}")
-
-if __name__ == "__main__":
-    main()
+# Example usage
+result = integration_task("https://github.com/owner/repo/issues/123")
+print(result)
 ```
 
-Note: this example requires the yahoofinance and yfinance packages to be installed. You can install them with `pip install yahoofinance yfinance`.
+Note: this example requires GitHub and Linear API keys to be set in your environment variables.
 
 ## Conduct and Compose
 The `Conduct` and `Compose` tools are used to orchestrate and compose agents. Conduct is used to actually instruct and orchestrate a team of agents, while Compose is used in addition to the Conduct tool to enrich the orchestration process with additional complexity as a preprocessing step. It's important to note that Conduct is required for the orchestration process to work, while Compose is an optional additional tool that can be used to enrich the orchestration process.
@@ -325,7 +309,7 @@ research_agent = Agent(
     agent_id="research_assistant_1",
     role="research assistant",
     goal="answer user queries",
-    llm=OpenaiModels.gpt_4o,
+    llm=OpenaiModels.gpt_4_1,
     tools={WebTools.exa_search}
 )
 

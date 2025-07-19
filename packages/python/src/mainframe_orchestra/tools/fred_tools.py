@@ -1,28 +1,72 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 import os
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 from ..utils.braintrust_utils import traced
-
-def check_pandas():
-    try:
-        import pandas as pd
-        return pd
-    except ImportError:
-        raise ImportError("pandas is required for FredTools. Install with `pip install pandas`")
-
-def check_fredapi():
-    try:
-        from fredapi import Fred
-        return Fred
-    except ImportError:
-        raise ImportError("fredapi is required for FredTools. Install with `pip install fredapi`")
 
 
 class FredTools:
+    _pandas = None
+    _Fred = None
+
+    @classmethod
+    def _get_pandas(cls):
+        """Lazy load pandas with proper error handling."""
+        if cls._pandas is None:
+            try:
+                import pandas as pd  # type: ignore
+
+                cls._pandas = pd
+            except ImportError as e:
+                raise ImportError(
+                    "pandas is required for FredTools. " "Install with: 'pip install pandas'"
+                ) from e
+        return cls._pandas
+
+    @classmethod
+    def _get_fred(cls):
+        """Lazy load fredapi with proper error handling."""
+        if cls._Fred is None:
+            try:
+                from fredapi import Fred  # type: ignore
+
+                cls._Fred = Fred
+            except ImportError as e:
+                raise ImportError(
+                    "fredapi is required for FredTools. " "Install with: 'pip install fredapi'"
+                ) from e
+        return cls._Fred
+
+    @classmethod
+    def check_dependencies(cls) -> Dict[str, bool]:
+        """
+        Check if required dependencies are available.
+
+        Returns:
+            Dict[str, bool]: Dictionary with dependency names as keys and availability as values.
+        """
+        dependencies = {}
+
+        try:
+            cls._get_pandas()
+            dependencies["pandas"] = True
+        except ImportError:
+            dependencies["pandas"] = False
+
+        try:
+            cls._get_fred()
+            dependencies["fredapi"] = True
+        except ImportError:
+            dependencies["fredapi"] = False
+
+        return dependencies
+
     @traced(type="tool")
-    @staticmethod
-    def economic_indicator_analysis(indicator_ids: List[str], start_date: str, end_date: str) -> Dict[str, Any]:
+    @classmethod
+    def economic_indicator_analysis(
+        cls, indicator_ids: List[str], start_date: str, end_date: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Perform a comprehensive analysis of economic indicators.
 
@@ -33,19 +77,27 @@ class FredTools:
 
         Returns:
             Dict[str, Any]: A dictionary containing the analysis results for each indicator.
+            None: If required dependencies are not available.
         """
-        Fred = check_fredapi()
-        fred = Fred(api_key=os.getenv('FRED_API_KEY'))
+        try:
+            Fred = cls._get_fred()
+        except ImportError:
+            print("Error: fredapi is not installed. Please install it using 'pip install fredapi'.")
+            return None
+
+        fred = Fred(api_key=os.getenv("FRED_API_KEY"))
 
         results = {}
 
         for indicator_id in indicator_ids:
-            series = fred.get_series(indicator_id, observation_start=start_date, observation_end=end_date)
+            series = fred.get_series(
+                indicator_id, observation_start=start_date, observation_end=end_date
+            )
             series = series.dropna()
 
             if len(series) > 0:
                 pct_change = series.pct_change()
-                annual_change = series.resample('YE').last().pct_change()
+                annual_change = series.resample("YE").last().pct_change()
 
                 results[indicator_id] = {
                     "indicator": indicator_id,
@@ -62,7 +114,7 @@ class FredTools:
                     "annual_change_std": annual_change.std(),
                     "last_value": series.iloc[-1],
                     "last_pct_change": pct_change.iloc[-1],
-                    "last_annual_change": annual_change.iloc[-1]
+                    "last_annual_change": annual_change.iloc[-1],
                 }
             else:
                 results[indicator_id] = None
@@ -70,8 +122,10 @@ class FredTools:
         return results
 
     @traced(type="tool")
-    @staticmethod
-    def yield_curve_analysis(treasury_maturities: List[str], start_date: str, end_date: str) -> Dict[str, Any]:
+    @classmethod
+    def yield_curve_analysis(
+        cls, treasury_maturities: List[str], start_date: str, end_date: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Perform an analysis of the US Treasury yield curve.
 
@@ -82,15 +136,30 @@ class FredTools:
 
         Returns:
             Dict[str, Any]: A dictionary containing the yield curve analysis results.
+            None: If required dependencies are not available.
         """
-        pd = check_pandas()
-        Fred = check_fredapi()
-        fred = Fred(api_key=os.getenv('FRED_API_KEY'))
+        try:
+            pd = cls._get_pandas()
+            Fred = cls._get_fred()
+        except ImportError as e:
+            if "pandas" in str(e):
+                print(
+                    "Error: pandas is not installed. Please install it using 'pip install pandas'."
+                )
+            else:
+                print(
+                    "Error: fredapi is not installed. Please install it using 'pip install fredapi'."
+                )
+            return None
+
+        fred = Fred(api_key=os.getenv("FRED_API_KEY"))
 
         yield_data = {}
 
         for maturity in treasury_maturities:
-            series = fred.get_series(maturity, observation_start=start_date, observation_end=end_date)
+            series = fred.get_series(
+                maturity, observation_start=start_date, observation_end=end_date
+            )
             yield_data[maturity] = series
 
         yield_df = pd.DataFrame(yield_data)
@@ -111,7 +180,7 @@ class FredTools:
                 "end_date": end_date,
                 "yield_data": yield_df,
                 "yield_curve_slopes": yield_curve_slopes_df,
-                "inverted_yield_curve": yield_curve_slopes_df.min().min() < 0
+                "inverted_yield_curve": yield_curve_slopes_df.min().min() < 0,
             }
         else:
             results = None
@@ -119,8 +188,10 @@ class FredTools:
         return results
 
     @traced(type="tool")
-    @staticmethod
-    def economic_news_sentiment_analysis(news_series_id: str, start_date: str, end_date: str) -> Dict[str, Any]:
+    @classmethod
+    def economic_news_sentiment_analysis(
+        cls, news_series_id: str, start_date: str, end_date: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Perform sentiment analysis on economic news series.
 
@@ -131,11 +202,19 @@ class FredTools:
 
         Returns:
             Dict[str, Any]: A dictionary containing the sentiment analysis results.
+            None: If required dependencies are not available.
         """
-        Fred = check_fredapi()
-        fred = Fred(api_key=os.getenv('FRED_API_KEY'))
+        try:
+            Fred = cls._get_fred()
+        except ImportError:
+            print("Error: fredapi is not installed. Please install it using 'pip install fredapi'.")
+            return None
 
-        series = fred.get_series(news_series_id, observation_start=start_date, observation_end=end_date)
+        fred = Fred(api_key=os.getenv("FRED_API_KEY"))
+
+        series = fred.get_series(
+            news_series_id, observation_start=start_date, observation_end=end_date
+        )
         series = series.dropna()
 
         if len(series) > 0:
@@ -150,7 +229,7 @@ class FredTools:
                 "positive_sentiment_count": sentiment_counts.get(1, 0),
                 "negative_sentiment_count": sentiment_counts.get(-1, 0),
                 "neutral_sentiment_count": sentiment_counts.get(0, 0),
-                "net_sentiment_score": sentiment_scores.sum()
+                "net_sentiment_score": sentiment_scores.sum(),
             }
         else:
             results = None

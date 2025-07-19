@@ -1,14 +1,29 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+
+import asyncio
+import json
+import logging
+import queue
+import threading
+from datetime import date, datetime
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    Coroutine,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Callable, Optional, Union, Dict, List, Any, Set, Tuple, AsyncIterator, Iterator, Coroutine
-from datetime import datetime, date
-import json
-import asyncio
-import logging
 
-from .utils.parse_json_response import parse_json_response
 from .utils.logging_config import logger
+from .utils.parse_json_response import parse_json_response
 
 
 def serialize_result(obj: Any) -> Union[str, int, float, bool, None, Dict[str, Any], List[Any]]:
@@ -71,6 +86,7 @@ class Task(BaseModel):
         stream (bool): Whether to stream the final LLM response
         initial_response (bool): Whether to provide initial response before tools
         tool_summaries (bool): Whether to include summaries for tool calls
+        max_iterations (int): Maximum number of tool loop iterations (default: 50)
     """
 
     # Agent-specific fields
@@ -120,6 +136,7 @@ class Task(BaseModel):
     tool_summaries: bool = Field(
         default=False, description="Whether to include explanatory summaries for tool calls"
     )
+    max_iterations: int = Field(default=50, description="Maximum number of tool loop iterations")
 
     # Response handling
     initial_response: bool = Field(
@@ -167,45 +184,34 @@ class Task(BaseModel):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         require_json_output: bool = False,
-        callback: Optional[Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]] = None,
+        callback: Optional[
+            Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]
+        ] = None,
         event_queue: Optional[Any] = None,
         messages: Optional[List[Dict[str, str]]] = None,
         initial_response: bool = False,
         tool_summaries: bool = False,
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
         stream: bool = False,
+        max_iterations: int = 50,
     ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
-        """Create and execute a task synchronously.
+        """Create and execute a task synchronously."""
+        # Use queue to get result from thread
+        result_queue = queue.Queue()
 
-        Raises:
-            RuntimeError: If called from within an already running asyncio event loop.
-        """
-        try:
+        def run_in_thread():
             try:
-                loop = asyncio.get_running_loop()
-                # Prevent calling sync method from async context
-                raise RuntimeError(
-                    "Task.create() cannot be called from a running event loop. Use Task.create_async() instead."
-                )
-            except RuntimeError:
-                # Not in an async context, so we can use or create a loop
-                created_loop = False
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_closed():
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        created_loop = True
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    created_loop = True
+                # Create a completely new event loop in this thread
+                thread_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(thread_loop)
 
-            logger.debug("[Task.create] Using event loop for synchronous execution")
+                # Prevent the loop from being closed automatically
+                # This keeps resources around until they're done
+                thread_loop._close = thread_loop.close
+                thread_loop.close = lambda: None
 
-            try:
-                # Run the async version synchronously
-                result = loop.run_until_complete(
+                # Run the async task
+                thread_result = thread_loop.run_until_complete(
                     cls.create_async(
                         agent=agent,
                         role=role,
@@ -226,16 +232,23 @@ class Task(BaseModel):
                         tool_summaries=tool_summaries,
                         pre_execute=pre_execute,
                         stream=stream,
+                        max_iterations=max_iterations,
                     )
                 )
-                return result
-            finally:
-                # Only close the loop if we created it
-                if created_loop and not loop.is_closed():
-                    loop.close()
-        except Exception as e:
-            logger.error(f"[Task.create] Error during synchronous task creation: {str(e)}", exc_info=True)
-            return e
+
+                # Put result in queue before any cleanup attempts
+                result_queue.put(thread_result)
+            except Exception as e:
+                logger.error(f"[Task.create] Thread error: {str(e)}", exc_info=True)
+                result_queue.put(e)
+
+        # Create and start thread
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+
+        # Wait for thread to complete and get result
+        thread.join()
+        return result_queue.get()
 
     @classmethod
     async def create_async(
@@ -252,7 +265,9 @@ class Task(BaseModel):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         require_json_output: bool = False,
-        callback: Optional[Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]] = None,
+        callback: Optional[
+            Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]
+        ] = None,
         event_queue: Optional[Any] = None,
         messages: Optional[List[Dict[str, str]]] = None,
         stream: bool = False,
@@ -260,6 +275,7 @@ class Task(BaseModel):
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
         thread_id: Optional[str] = None,
         tool_summaries: bool = False,
+        max_iterations: int = 50,
     ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """
         Create and execute a task asynchronously.
@@ -285,6 +301,7 @@ class Task(BaseModel):
             pre_execute: Optional pre-execution callback
             thread_id: Optional thread ID
             tool_summaries: Whether to include tool summaries
+            max_iterations: Maximum number of tool loop iterations
 
         Returns:
             Union[str, Exception, AsyncIterator[str]]: Task result or stream
@@ -329,7 +346,9 @@ class Task(BaseModel):
                 "context": context,
                 "instruction": instruction,
                 "llm": llm or (agent.llm if agent else None),
-                "tools": set().union(tools or set(), getattr(agent, "tools", None) or set()),  # Merge tools
+                "tools": set().union(
+                    tools or set(), getattr(agent, "tools", None) or set()
+                ),  # Merge tools
                 "image_data": image_data,
                 "temperature": temperature or (agent.temperature if agent else 0.7),
                 "max_tokens": max_tokens or (agent.max_tokens if agent else 4000),
@@ -341,7 +360,8 @@ class Task(BaseModel):
                 "pre_execute": pre_execute,
                 "initial_response": initial_response,
                 "tool_summaries": tool_summaries,
-                "thread_id": thread_id
+                "thread_id": thread_id,
+                "max_iterations": max_iterations,
             }
 
             # Validate task data using Pydantic
@@ -363,7 +383,9 @@ class Task(BaseModel):
 
     async def execute(
         self,
-        callback: Optional[Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]] = None,
+        callback: Optional[
+            Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]
+        ] = None,
         pre_execute: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """
@@ -403,15 +425,19 @@ class Task(BaseModel):
             if callback:
                 # Check if callback is awaitable before awaiting
                 if asyncio.iscoroutinefunction(callback):
-                    await callback({"type": "error", "content": error_msg, "agent_id": self.agent_id})
+                    await callback(
+                        {"type": "error", "content": error_msg, "agent_id": self.agent_id}
+                    )
                 else:
                     callback({"type": "error", "content": error_msg, "agent_id": self.agent_id})
             raise
 
     async def _direct_llm_call(
         self,
-        callback: Optional[Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]] = None,
-        response_type: str = "final_response"
+        callback: Optional[
+            Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]
+        ] = None,
+        response_type: str = "final_response",
     ) -> Union[str, AsyncIterator[str]]:
         """Execute a direct LLM call without tool usage, with fallback support.
 
@@ -552,7 +578,9 @@ class Task(BaseModel):
                         )
                 # Ensure response is string before strip()
                 if not isinstance(response, str):
-                    logger.warning(f"Expected string response from LLM, got {type(response)}. Converting to string.")
+                    logger.warning(
+                        f"Expected string response from LLM, got {type(response)}. Converting to string."
+                    )
                     response = str(response)
                 return response.strip()
 
@@ -590,8 +618,12 @@ class Task(BaseModel):
 
     async def _execute_tool_loop(
         self,
-        callback: Optional[Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]] = None,
-        pre_execute: Optional[Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]] = None,
+        callback: Optional[
+            Callable[[Dict[str, Any]], Union[Any, Coroutine[Any, Any, None]]]
+        ] = None,
+        pre_execute: Optional[
+            Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]
+        ] = None,
     ) -> Tuple[Optional[Union[str, Exception]], List[str]]:
         """Execute the tool loop with enhanced logging."""
         logger = logging.getLogger("mainframe-orchestra")
@@ -603,9 +635,9 @@ class Task(BaseModel):
             return None, []
 
         try:
-            MAX_ITERATIONS = 20
-            MAX_IDENTICAL_CALLS = 3
-            MAX_CONDUCT_CALLS = 3
+            MAX_ITERATIONS = self.max_iterations  # Use the new field
+            MAX_IDENTICAL_CALLS = 10
+            MAX_CONDUCT_CALLS = 5
 
             iteration_count = 0
             tool_call_history = {}
@@ -722,9 +754,11 @@ The original task instruction:
                 temp_history.append({"role": "user", "content": tool_loop_instruction})
 
                 # Handle self.llm being a list/tuple
-                active_llm = self.llm[0] if isinstance(self.llm, (list, tuple)) and self.llm else self.llm
+                active_llm = (
+                    self.llm[0] if isinstance(self.llm, (list, tuple)) and self.llm else self.llm
+                )
                 if not callable(active_llm):
-                     raise TypeError(f"Resolved LLM is not callable: {type(active_llm)}")
+                    raise TypeError(f"Resolved LLM is not callable: {type(active_llm)}")
 
                 response, error = await active_llm(
                     messages=temp_history, require_json_output=True, temperature=self.temperature
@@ -820,12 +854,14 @@ The original task instruction:
                     logger.error(f"Problematic response: {truncated_response}...")
 
                     # Increment retry counter for invalid tool responses
-                    retry_count = getattr(self, '_invalid_response_retries', 0) + 1
+                    retry_count = getattr(self, "_invalid_response_retries", 0) + 1
                     self._invalid_response_retries = retry_count
 
                     # Exit loop after 3 consecutive failures
                     if retry_count >= 3:
-                        logger.warning(f"[TOOL_LOOP] Too many invalid tool responses ({retry_count}). Exiting tool loop.")
+                        logger.warning(
+                            f"[TOOL_LOOP] Too many invalid tool responses ({retry_count}). Exiting tool loop."
+                        )
                         return None, tool_results
 
                     # Safely call the callback
@@ -844,10 +880,12 @@ The original task instruction:
 
                     # Add error to tool results for context in next iteration
                     tool_results.append(
-                        f"\nTool Response Error:\n"
-                        f"Iteration: {iteration_count}\n"
-                        f"Error: {error_msg}\n"
-                        f"Response: {response[:200]}..."  # Truncate long responses
+                        "\nTool Response Error:\n"
+                        + f"Iteration: {iteration_count}"
+                        + "\n"
+                        + f"Error: {error_msg}"
+                        + "\n"
+                        + f"Response: {response[:200]}..."  # Truncate long responses
                     )
 
                     # Continue to next iteration
@@ -875,7 +913,11 @@ The original task instruction:
                                 async def callback_wrapper(event):
                                     # Safely call the original callback
                                     if callback:
-                                        wrapped_event = {**event, "type": "initial_response", "streaming": True}
+                                        wrapped_event = {
+                                            **event,
+                                            "type": "initial_response",
+                                            "streaming": True,
+                                        }
                                         if asyncio.iscoroutinefunction(callback):
                                             await callback(wrapped_event)
                                         else:
@@ -953,12 +995,12 @@ The original task instruction:
 
                             # Execute tool and store result
                             # tools_dict is built from non-None self.tools
-                            tool_name = tool_call.get("tool") # Get tool name again
+                            tool_name = tool_call.get("tool")  # Get tool name again
                             # Check tool_name exists before dict access
                             if tool_name and tool_name in tools_dict:
                                 tool_func = tools_dict[tool_name]
                             elif tool_name == "conduct_tool":
-                                tool_func = None # Special handling for conduct_tool below
+                                tool_func = None  # Special handling for conduct_tool below
                             else:
                                 error_msg = f"Unknown or missing tool name: {tool_name}"
                                 logger.error(f"{error_msg}")
@@ -970,18 +1012,20 @@ The original task instruction:
                                     else:
                                         callback(callback_event)
                                 # Store error and continue loop
-                                tool_results.append(f"\nTool Response Error: {error_msg}")
+                                tool_results.append("\nTool Response Error: " + error_msg)
                                 continue
 
                             try:
                                 # Handle conduct_tool separately if needed or integrate tool_func check
                                 if tool_name == "conduct_tool":
-                                     # Assuming conduct_tool logic is handled via special_params
-                                     # If conduct_tool needs a callable func, assign it here or adjust logic
-                                     pass # Placeholder for specific conduct_tool logic if needed
+                                    # Assuming conduct_tool logic is handled via special_params
+                                    # If conduct_tool needs a callable func, assign it here or adjust logic
+                                    pass  # Placeholder for specific conduct_tool logic if needed
                                 elif not callable(tool_func):
-                                     # This case should be rare if tools_dict is built correctly
-                                     raise TypeError(f"Tool '{tool_name}' retrieved from dict is not callable")
+                                    # This case should be rare if tools_dict is built correctly
+                                    raise TypeError(
+                                        f"Tool '{tool_name}' retrieved from dict is not callable"
+                                    )
 
                                 # Create a copy of tool_params without callback-related items
                                 serializable_params = tool_params.copy()
@@ -989,20 +1033,22 @@ The original task instruction:
 
                                 if tool_name == "conduct_tool":
                                     # Store callback-related parameters separately
-                                    special_params.update({
-                                        "callback": callback,
-                                        "thread_id": self.thread_id,
-                                        "event_queue": self.event_queue,
-                                        "pre_execute": pre_execute,
-                                        "parent_context": self.context,  # Pass the parent task's context
-                                    })
+                                    special_params.update(
+                                        {
+                                            "callback": callback,
+                                            "thread_id": self.thread_id,
+                                            "event_queue": self.event_queue,
+                                            "pre_execute": pre_execute,
+                                            "parent_context": self.context,  # Pass the parent task's context
+                                        }
+                                    )
 
                                 # Log only the serializable parameters
                                 logger.info(
                                     f"Executing tool: [{tool_name}] with parameters: {json.dumps(serializable_params, separators=(',', ':'))}"
                                 )
 
-                                raw_result = None # Initialize raw_result
+                                raw_result = None  # Initialize raw_result
                                 # Only attempt to call if tool_func is callable
                                 if callable(tool_func):
                                     if asyncio.iscoroutinefunction(tool_func):
@@ -1015,7 +1061,9 @@ The original task instruction:
                                 elif tool_name == "conduct_tool":
                                     # Handle conduct_tool case if specific logic is needed here
                                     # For now, we just skip the call as tool_func is None
-                                    logger.debug(f"Skipping call for conduct_tool, parameters prepared in special_params: {special_params.keys()}")
+                                    logger.debug(
+                                        f"Skipping call for conduct_tool, parameters prepared in special_params: {special_params.keys()}"
+                                    )
                                     # Potentially, conduct_tool logic should happen *here* using special_params
                                     # Since no logic is present, raw_result remains None or could be set to a status message
 
@@ -1023,10 +1071,12 @@ The original task instruction:
                                 if isinstance(raw_result, Exception):
                                     error_msg = f"Tool returned error: {str(raw_result)}"
                                     formatted_error = (
-                                        f"\nTool Execution Result:\n"
-                                        f"Tool: '{tool_name}'\n"
-                                        f"Parameters: {json.dumps(tool_params, indent=2)}\n"
-                                        f"Error: {str(raw_result)}"
+                                        "\nTool Execution Result:\n"
+                                        + f"Tool: '{tool_name}'"
+                                        + "\n"
+                                        + f"Parameters: {json.dumps(tool_params, indent=2)}"
+                                        + "\n"
+                                        + f"Error: {str(raw_result)}"
                                     )
                                     tool_results.append(formatted_error)
                                     # Continue execution to let the agent handle the error
@@ -1057,10 +1107,14 @@ The original task instruction:
                                         callback(callback_event)
 
                                 formatted_result = (
-                                    f"\nTool Execution:\n"
-                                    f"Tool: '{tool_name}'\n"
-                                    f"Parameters: {json.dumps(tool_params, indent=2)}\n"
-                                    f"Result:\n{result_str}"
+                                    "\nTool Execution:\n"
+                                    + f"Tool: '{tool_name}'"
+                                    + "\n"
+                                    + f"Parameters: {json.dumps(tool_params, indent=2)}"
+                                    + "\n"
+                                    + "Result:"
+                                    + "\n"
+                                    + result_str
                                 )
                                 tool_results.append(
                                     formatted_result
@@ -1084,10 +1138,12 @@ The original task instruction:
 
                                 # Format the error as a tool result
                                 formatted_error = (
-                                    f"\nTool Execution Error:\n"
-                                    f"Tool: '{tool_name}'\n"
-                                    f"Parameters: {json.dumps(tool_params, indent=2)}\n"
-                                    f"Error: {str(e)}"
+                                    "\nTool Execution Error:\n"
+                                    + f"Tool: '{tool_name}'"
+                                    + "\n"
+                                    + f"Parameters: {json.dumps(tool_params, indent=2)}"
+                                    + "\n"
+                                    + f"Error: {str(e)}"
                                 )
                                 tool_results.append(formatted_error)
 
@@ -1150,8 +1206,11 @@ The original task instruction:
             return e, []
 
     async def _execute_final_task(
-        self, tool_results: List[str],
-        callback: Optional[Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]] = None
+        self,
+        tool_results: List[str],
+        callback: Optional[
+            Callable[[Dict[str, Any]], Union[None, Coroutine[Any, Any, None]]]
+        ] = None,
     ) -> Union[str, Dict, Exception, AsyncIterator[str]]:
         """Execute the final task with tool results."""
         logger = logging.getLogger("mainframe-orchestra")
@@ -1167,7 +1226,7 @@ The original task instruction:
                 ]
             )
 
-        content_parts.append(f"Now focus on addressing the instruction:\n{self.instruction}")
+        content_parts.append("Now focus on addressing the instruction:\n" + self.instruction)
 
         self.messages.append({"role": "user", "content": "\n".join(content_parts)})
 
@@ -1193,7 +1252,7 @@ The original task instruction:
                     return parse_json_response(result)
                 except ValueError as e:
                     return ValueError(
-                        f"Failed to parse JSON from LLM response: {result}\nError: {e}"
+                        f"Failed to parse JSON from LLM response: {result}" + "\nError: " + str(e)
                     )
 
             return result
@@ -1242,25 +1301,25 @@ The original task instruction:
                     if chunk.get("type") in ["initial_response", "final_response"] and chunk.get(
                         "streaming"
                     ):
-                        content = chunk.get("content", "") # Use .get() for safer access
+                        content = chunk.get("content", "")  # Use .get() for safer access
                         collected.append(str(content))
                         if callback:
-                            if callback is print: # Use 'is' to check for specific print function
+                            if callback is print:  # Use 'is' to check for specific print function
                                 print(content, end=end, flush=flush)
                             else:
                                 # Call other callbacks without end/flush
                                 callback(str(content))
                     # Handle non-streaming responses
                     elif chunk.get("type") in ["initial_response", "final_response"]:
-                        content = chunk.get("content", "") # Use .get()
-                        chunk_type = chunk.get("type", "response") # Use .get()
+                        content = chunk.get("content", "")  # Use .get()
+                        chunk_type = chunk.get("type", "response")  # Use .get()
                         collected.append(str(content))
                         if callback:
                             if callback is print:
                                 print(
-                                    f"\n{chunk_type.replace('_', ' ').title()}: {content}",
-                                    end=end, # OK for print
-                                    flush=flush, # OK for print
+                                    "\n" + chunk_type.replace("_", " ").title() + f": {content}",
+                                    end=end,  # OK for print
+                                    flush=flush,  # OK for print
                                 )
                             else:
                                 # Call other callbacks without end/flush
@@ -1272,14 +1331,14 @@ The original task instruction:
                         if callback is print:
                             print(chunk, end=end, flush=flush)
                         else:
-                             # Call other callbacks without end/flush
+                            # Call other callbacks without end/flush
                             callback(chunk)
 
             # Add newline after stream is complete (only for print)
             if callback is print:
-                 # Ensure callback is callable before calling (Fixing L1012)
-                 if callable(callback):
-                     print("\n", end="", flush=True)
+                # Ensure callback is callable before calling (Fixing L1012)
+                if callable(callback):
+                    print("\n", end="", flush=True)
 
             return "".join(collected)
 
