@@ -1,32 +1,44 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-import os
-from typing import List, Dict, Optional, Literal, Union
-from dotenv import load_dotenv
-import requests
-from ..utils.braintrust_utils import traced
-from openai import OpenAI
-import time
 import io
+import os
+import time
+from typing import Dict, List, Literal, Optional, Union
+
+import requests
+from dotenv import load_dotenv
+from openai import OpenAI
+
+from ..utils.braintrust_utils import traced
 
 load_dotenv()
+
 
 def check_elevenlabs():
     try:
         from elevenlabs import play
         from elevenlabs.client import ElevenLabs
+
         return play, ElevenLabs
     except ImportError:
-        raise ImportError("elevenlabs is required for text_to_speech. Install with `pip install elevenlabs`")
+        raise ImportError(
+            "elevenlabs is required for text_to_speech. Install with `pip install elevenlabs`"
+        )
+
 
 def check_pygame():
     try:
         import os
-        os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+
+        os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
         import pygame
+
         return pygame
     except ImportError:
-        raise ImportError("pygame is required for audio playback. Install with `pip install pygame`")
+        raise ImportError(
+            "pygame is required for audio playback. Install with `pip install pygame`"
+        )
+
 
 class TextToSpeechTools:
     @traced(type="tool")
@@ -47,20 +59,18 @@ class TextToSpeechTools:
             from elevenlabs import play
             from elevenlabs.client import ElevenLabs
         except ModuleNotFoundError as e:
-            raise ImportError(f"{e.name} is required for text_to_speech. Install with `pip install {e.name}`")
+            raise ImportError(
+                f"{e.name} is required for text_to_speech. Install with `pip install {e.name}`"
+            )
 
-        api_key = os.getenv('ELEVENLABS_API_KEY')
+        api_key = os.getenv("ELEVENLABS_API_KEY")
 
         if not api_key:
             raise ValueError("ELEVENLABS_API_KEY not found in environment variables")
 
         client = ElevenLabs(api_key=api_key)
 
-        audio = client.generate(
-            text=text,
-            voice=voice,
-            model="eleven_multilingual_v2"
-        )
+        audio = client.generate(text=text, voice=voice, model="eleven_multilingual_v2")
 
         if output_file:
             with open(output_file, "wb") as file:
@@ -85,19 +95,17 @@ class TextToSpeechTools:
         """
         try:
             import os
-            os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+
+            os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
             import pygame
         except ModuleNotFoundError:
-            raise ImportError("pygame is required for audio playback in the openai_text_to_speech tool. Install with `pip install pygame`")
+            raise ImportError(
+                "pygame is required for audio playback in the openai_text_to_speech tool. Install with `pip install pygame`"
+            )
 
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-        response = client.audio.speech.create(
-            model="tts-1",
-            voice=voice,
-            input=text,
-            speed=1.0
-        )
+        response = client.audio.speech.create(model="tts-1", voice=voice, input=text, speed=1.0)
 
         if output_file:
             # Save the audio file using the recommended streaming method
@@ -108,7 +116,7 @@ class TextToSpeechTools:
             time.sleep(0.7)
             # Play the audio directly using pygame
             pygame.mixer.init()
-            audio_data = b''.join(chunk for chunk in response.iter_bytes())
+            audio_data = b"".join(chunk for chunk in response.iter_bytes())
             audio_file = io.BytesIO(audio_data)
             pygame.mixer.music.load(audio_file)
 
@@ -120,6 +128,7 @@ class TextToSpeechTools:
                 time.sleep(0.1)
             pygame.mixer.quit()
 
+
 class WhisperTools:
     @traced(type="tool")
     @staticmethod
@@ -130,7 +139,7 @@ class WhisperTools:
         prompt: Optional[str] = None,
         response_format: Literal["json", "text", "srt", "verbose_json", "vtt"] = "json",
         temperature: float = 0,
-        timestamp_granularities: Optional[List[Literal["segment", "word"]]] = None
+        timestamp_granularities: Optional[List[Literal["segment", "word"]]] = None,
     ) -> Union[Dict, List[Dict]]:
         """
         Transcribe audio using the OpenAI Whisper API.
@@ -152,28 +161,28 @@ class WhisperTools:
         if not api_key:
             raise ValueError("OPENAI_API_KEY must be set in .env file")
 
-        url = 'https://api.openai.com/v1/audio/transcriptions'
-        headers = {'Authorization': f'Bearer {api_key}'}
+        url = "https://api.openai.com/v1/audio/transcriptions"
+        headers = {"Authorization": f"Bearer {api_key}"}
 
         def process_single_file(file_path):
-            with open(file_path, 'rb') as audio_file:
-                files = {'file': audio_file}
+            with open(file_path, "rb") as audio_file:
+                files = {"file": audio_file}
                 data = {
-                    'model': model,
-                    'response_format': response_format,
-                    'temperature': temperature,
+                    "model": model,
+                    "response_format": response_format,
+                    "temperature": temperature,
                 }
                 if language:
-                    data['language'] = language
+                    data["language"] = language
                 if prompt:
-                    data['prompt'] = prompt
+                    data["prompt"] = prompt
                 if timestamp_granularities:
-                    data['timestamp_granularities'] = timestamp_granularities
+                    data["timestamp_granularities"] = timestamp_granularities
 
                 response = requests.post(url, headers=headers, files=files, data=data)
                 response.raise_for_status()
 
-                if response_format == 'json' or response_format == 'verbose_json':
+                if response_format == "json" or response_format == "verbose_json":
                     return response.json()
                 else:
                     return response.text
@@ -183,7 +192,7 @@ class WhisperTools:
         elif isinstance(audio_input, list) and all(isinstance(file, str) for file in audio_input):
             return [process_single_file(file) for file in audio_input if os.path.isfile(file)]
         else:
-            raise ValueError('Invalid input type. Expected string or list of strings.')
+            raise ValueError("Invalid input type. Expected string or list of strings.")
 
     @traced(type="tool")
     @staticmethod
@@ -193,7 +202,7 @@ class WhisperTools:
         prompt: Optional[str] = None,
         response_format: Literal["json", "text", "srt", "verbose_json", "vtt"] = "json",
         temperature: float = 0,
-        timestamp_granularities: Optional[List[Literal["segment", "word"]]] = None
+        timestamp_granularities: Optional[List[Literal["segment", "word"]]] = None,
     ) -> Union[Dict, List[Dict]]:
         """
         Translate audio to English using the OpenAI Whisper API.
@@ -215,26 +224,26 @@ class WhisperTools:
         if not api_key:
             raise ValueError("OPENAI_API_KEY must be set in .env file")
 
-        url = 'https://api.openai.com/v1/audio/translations'
-        headers = {'Authorization': f'Bearer {api_key}'}
+        url = "https://api.openai.com/v1/audio/translations"
+        headers = {"Authorization": f"Bearer {api_key}"}
 
         def process_single_file(file_path):
-            with open(file_path, 'rb') as audio_file:
-                files = {'file': audio_file}
+            with open(file_path, "rb") as audio_file:
+                files = {"file": audio_file}
                 data = {
-                    'model': model,
-                    'response_format': response_format,
-                    'temperature': temperature,
+                    "model": model,
+                    "response_format": response_format,
+                    "temperature": temperature,
                 }
                 if prompt:
-                    data['prompt'] = prompt
+                    data["prompt"] = prompt
                 if timestamp_granularities:
-                    data['timestamp_granularities'] = timestamp_granularities
+                    data["timestamp_granularities"] = timestamp_granularities
 
                 response = requests.post(url, headers=headers, files=files, data=data)
                 response.raise_for_status()
 
-                if response_format == 'json' or response_format == 'verbose_json':
+                if response_format == "json" or response_format == "verbose_json":
                     return response.json()
                 else:
                     return response.text
@@ -244,4 +253,4 @@ class WhisperTools:
         elif isinstance(audio_input, list):
             return [process_single_file(file) for file in audio_input if os.path.isfile(file)]
         else:
-            raise ValueError('Invalid input type. Expected string or list of strings.')
+            raise ValueError("Invalid input type. Expected string or list of strings.")

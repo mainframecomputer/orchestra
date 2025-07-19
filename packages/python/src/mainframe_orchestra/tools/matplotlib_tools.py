@@ -1,28 +1,42 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-from typing import List, Union, Any
+from typing import Any, List, Union
+
 from ..utils.braintrust_utils import traced
+
 
 def check_matplotlib_dependencies():
     try:
-        import numpy as np
-        import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
+        import matplotlib.pyplot as plt
+        import numpy as np
+
         return np, plt, mdates
     except ImportError:
-        raise ImportError("Matplotlib dependencies are not installed. To use MatplotlibTools, install the required packages with 'pip install matplotlib'")
+        raise ImportError(
+            "Matplotlib dependencies are not installed. To use MatplotlibTools, install the required packages with 'pip install matplotlib'"
+        )
+
 
 class MatplotlibTools:
     @traced(type="tool")
     @staticmethod
     def _check_dependencies():
-        if 'np' not in globals() or 'plt' not in globals():
-            raise ImportError("Matplotlib is not installed. To use MatplotlibTools, install the required packages with 'pip install matplotlib'")
+        if "np" not in globals() or "plt" not in globals():
+            raise ImportError(
+                "Matplotlib is not installed. To use MatplotlibTools, install the required packages with 'pip install matplotlib'"
+            )
 
     @traced(type="tool")
     @staticmethod
-    def create_line_plot(x: List[List[Union[float, str]]], y: List[List[float]], title: str = None, xlabel: str = "X", ylabel: str = "Y",
-                         output_file: str = "line_plot.png") -> Union[Any, str]:
+    def create_line_plot(
+        x: List[List[Union[float, str]]],
+        y: List[List[float]],
+        title: str = None,
+        xlabel: str = "X",
+        ylabel: str = "Y",
+        output_file: str = "line_plot.png",
+    ) -> Union[Any, str]:
         """
         Create a line plot using the provided x and y data.
 
@@ -41,17 +55,27 @@ class MatplotlibTools:
         try:
             np, plt, mdates = check_matplotlib_dependencies()
             if len(x) != len(y):
-                raise ValueError(f"The number of x and y lists must be equal. Got {len(x)} x-lists and {len(y)} y-lists. Check your data and try again.")
+                raise ValueError(
+                    f"The number of x and y lists must be equal. Got {len(x)} x-lists and {len(y)} y-lists. Check your data and try again."
+                )
 
             for i, (xi, yi) in enumerate(zip(x, y)):
                 if not isinstance(xi, list) or not isinstance(yi, list):
-                    raise TypeError(f"Both x[{i}] and y[{i}] must be lists. Check your data and try again.")
+                    raise TypeError(
+                        f"Both x[{i}] and y[{i}] must be lists. Check your data and try again."
+                    )
                 if len(xi) != len(yi):
-                    raise ValueError(f"The lengths of x[{i}] and y[{i}] must be equal. Got lengths {len(xi)} and {len(yi)}. Check your data and try again.")
+                    raise ValueError(
+                        f"The lengths of x[{i}] and y[{i}] must be equal. Got lengths {len(xi)} and {len(yi)}. Check your data and try again."
+                    )
                 if not all(isinstance(val, (int, float, str)) for val in xi):
-                    raise TypeError(f"All values in x[{i}] must be numbers or strings. Check your data and try again.")
+                    raise TypeError(
+                        f"All values in x[{i}] must be numbers or strings. Check your data and try again."
+                    )
                 if not all(isinstance(val, (int, float)) for val in yi):
-                    raise TypeError(f"All values in y[{i}] must be numbers. Check your data and try again.")
+                    raise TypeError(
+                        f"All values in y[{i}] must be numbers. Check your data and try again."
+                    )
 
             fig, ax = plt.subplots(figsize=(10, 6))
             for xi, yi in zip(x, y):
@@ -65,7 +89,7 @@ class MatplotlibTools:
             ax.set_ylabel(ylabel)
 
             # Format x-axis as dates
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
             ax.xaxis.set_major_locator(mdates.MonthLocator())
             plt.gcf().autofmt_xdate()  # Rotate and align the tick labels
 
@@ -76,7 +100,9 @@ class MatplotlibTools:
         except ImportError as e:
             return str(e)
         except Exception as e:
-            error_msg = f"Error: An unexpected error occurred while creating the line plot: {str(e)}"
+            error_msg = (
+                f"Error: An unexpected error occurred while creating the line plot: {str(e)}"
+            )
             print(error_msg)
             return error_msg
         finally:
@@ -85,7 +111,9 @@ class MatplotlibTools:
 
     @traced(type="tool")
     @staticmethod
-    def create_scatter_plot(x: List[float], y: List[float], title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
+    def create_scatter_plot(
+        x: List[float], y: List[float], title: str = None, xlabel: str = None, ylabel: str = None
+    ) -> Union[str, None]:
         """
         Create a scatter plot using the provided x and y data.
 
@@ -129,13 +157,17 @@ class MatplotlibTools:
             print(error_msg)
             return error_msg
         except Exception as e:
-            error_msg = f"Error: An unexpected error occurred while creating the scatter plot: {str(e)}"
+            error_msg = (
+                f"Error: An unexpected error occurred while creating the scatter plot: {str(e)}"
+            )
             print(error_msg)
             return error_msg
 
     @traced(type="tool")
     @staticmethod
-    def create_bar_plot(x: List[str], y: List[float], title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
+    def create_bar_plot(
+        x: List[str], y: List[float], title: str = None, xlabel: str = None, ylabel: str = None
+    ) -> Union[str, None]:
         """
         Create a bar plot using the provided x and y data.
 
@@ -184,7 +216,9 @@ class MatplotlibTools:
 
     @traced(type="tool")
     @staticmethod
-    def create_histogram(data: List[float], bins: int = 10, title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
+    def create_histogram(
+        data: List[float], bins: int = 10, title: str = None, xlabel: str = None, ylabel: str = None
+    ) -> Union[str, None]:
         """
         Create a histogram using the provided data.
 
@@ -220,13 +254,17 @@ class MatplotlibTools:
         except ImportError as e:
             return str(e)
         except Exception as e:
-            error_msg = f"Error: An unexpected error occurred while creating the histogram: {str(e)}"
+            error_msg = (
+                f"Error: An unexpected error occurred while creating the histogram: {str(e)}"
+            )
             print(error_msg)
             return error_msg
 
     @traced(type="tool")
     @staticmethod
-    def create_heatmap(data: List[List[float]], title: str = None, xlabel: str = None, ylabel: str = None) -> Union[str, None]:
+    def create_heatmap(
+        data: List[List[float]], title: str = None, xlabel: str = None, ylabel: str = None
+    ) -> Union[str, None]:
         """
         Create a heatmap using the provided 2D data.
 
@@ -244,7 +282,7 @@ class MatplotlibTools:
             data = np.array(data)
 
             plt.figure(figsize=(8, 6))
-            plt.imshow(data, cmap='viridis')
+            plt.imshow(data, cmap="viridis")
             plt.colorbar()
 
             if title:

@@ -1,10 +1,13 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-import os
 import json
+import os
+from typing import Any, Tuple
+
 import numpy as np
-from typing import Tuple, Any
+
 from ..utils.braintrust_utils import traced
+
 
 class FAISSTools:
     def __init__(self, dimension: int, metric: str = "IP"):
@@ -19,7 +22,9 @@ class FAISSTools:
         try:
             import faiss
         except ModuleNotFoundError:
-            raise ImportError("faiss is required for FAISSTools. Install with `pip install faiss-cpu` or `pip install faiss-gpu`")
+            raise ImportError(
+                "faiss is required for FAISSTools. Install with `pip install faiss-cpu` or `pip install faiss-gpu`"
+            )
 
         self.dimension = dimension
         self.metric = metric
@@ -69,11 +74,11 @@ class FAISSTools:
         metadata_path = f"{index_path}.metadata"
         if not os.path.exists(metadata_path):
             raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
-        with open(metadata_path, 'r') as f:
+        with open(metadata_path, "r") as f:
             self.metadata = json.load(f)
 
         self.dimension = self.index.d
-        self.embedding_model = self.metadata.get('embedding_model')
+        self.embedding_model = self.metadata.get("embedding_model")
 
     @traced(type="tool")
     def save_index(self, index_path: str) -> None:
@@ -85,7 +90,7 @@ class FAISSTools:
         """
         self.faiss.write_index(self.index, index_path)
         metadata_path = f"{index_path}.metadata"
-        with open(metadata_path, 'w') as f:
+        with open(metadata_path, "w") as f:
             json.dump(self.metadata, f)
 
     @traced(type="tool")
@@ -100,7 +105,9 @@ class FAISSTools:
             ValueError: If the vector dimension does not match the index dimension.
         """
         if vectors.shape[1] != self.dimension:
-            raise ValueError(f"Vector dimension {vectors.shape[1]} does not match index dimension {self.dimension}")
+            raise ValueError(
+                f"Vector dimension {vectors.shape[1]} does not match index dimension {self.dimension}"
+            )
 
         if self.metric == "IP":
             # Normalize vectors for Inner Product similarity
@@ -109,7 +116,9 @@ class FAISSTools:
         self.index.add(vectors)
 
     @traced(type="tool")
-    def search_vectors(self, query_vectors: np.ndarray, top_k: int = 10) -> Tuple[np.ndarray, np.ndarray]:
+    def search_vectors(
+        self, query_vectors: np.ndarray, top_k: int = 10
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Search for similar vectors in the FAISS index.
 
@@ -124,7 +133,9 @@ class FAISSTools:
             ValueError: If the query vector dimension does not match the index dimension.
         """
         if query_vectors.shape[1] != self.dimension:
-            raise ValueError(f"Query vector dimension {query_vectors.shape[1]} does not match index dimension {self.dimension}")
+            raise ValueError(
+                f"Query vector dimension {query_vectors.shape[1]} does not match index dimension {self.dimension}"
+            )
 
         if self.metric == "IP":
             # Normalize query vectors for Inner Product similarity
@@ -199,5 +210,5 @@ class FAISSTools:
         """
         self.embedding_provider = provider
         self.embedding_model = model
-        self.set_metadata('embedding_provider', provider)
-        self.set_metadata('embedding_model', model)
+        self.set_metadata("embedding_provider", provider)
+        self.set_metadata("embedding_model", model)

@@ -1,19 +1,23 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 import os
-from typing import List, Dict, Union, Literal, Tuple
-from dotenv import load_dotenv
-import requests
 import time
+from typing import Dict, List, Literal, Tuple, Union
+
+import requests
+from dotenv import load_dotenv
+
 from ..utils.braintrust_utils import traced
 
 # Load environment variables
 load_dotenv()
 
+
 class EmbeddingsTools:
     """
     A class for generating embeddings using various models.
     """
+
     MODEL_DIMENSIONS = {
         # OpenAI
         "text-embedding-3-small": 1536,
@@ -28,7 +32,7 @@ class EmbeddingsTools:
         "embed-multilingual-light-v3.0": 384,
         "embed-multilingual-v2.0": 768,
         # Mistral
-        "mistral-embed": 1024
+        "mistral-embed": 1024,
     }
 
     @traced(type="tool")
@@ -57,7 +61,9 @@ class EmbeddingsTools:
     @staticmethod
     def get_openai_embeddings(
         input_text: Union[str, List[str]],
-        model: Literal["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"] = "text-embedding-3-small"
+        model: Literal[
+            "text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"
+        ] = "text-embedding-3-small",
     ) -> Tuple[List[List[float]], Dict[str, int]]:
         """
         Generate embeddings for the given input text using OpenAI's API.
@@ -87,10 +93,7 @@ class EmbeddingsTools:
 
         # Prepare the API request
         url = "https://api.openai.com/v1/embeddings"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
         # Ensure input_text is a list and not empty
         if isinstance(input_text, str):
@@ -114,19 +117,21 @@ class EmbeddingsTools:
             response.raise_for_status()
             data = response.json()
 
-            embeddings = [item['embedding'] for item in data['data']]
+            embeddings = [item["embedding"] for item in data["data"]]
 
             return embeddings, {"dimensions": EmbeddingsTools.MODEL_DIMENSIONS[model]}
 
         except requests.exceptions.RequestException as e:
-            raise requests.exceptions.RequestException(f"Error making request to OpenAI API: {str(e)}")
+            raise requests.exceptions.RequestException(
+                f"Error making request to OpenAI API: {str(e)}"
+            )
 
     @traced(type="tool")
     @staticmethod
     def get_cohere_embeddings(
         input_text: Union[str, List[str]],
         model: str = "embed-english-v3.0",
-        input_type: str = "search_document"
+        input_type: str = "search_document",
     ) -> Tuple[List[List[float]], Dict[str, int]]:
         """
         Generate embeddings for the given input text using Cohere's API.
@@ -154,7 +159,9 @@ class EmbeddingsTools:
         try:
             import cohere
         except ModuleNotFoundError:
-            raise ImportError("cohere package is required for Cohere embedding tools. Install with `pip install cohere`")
+            raise ImportError(
+                "cohere package is required for Cohere embedding tools. Install with `pip install cohere`"
+            )
         cohere_client = cohere.Client(api_key)
 
         # Ensure input_text is a list
@@ -163,11 +170,7 @@ class EmbeddingsTools:
 
         try:
             time.sleep(1)  # Rate limiting
-            response = cohere_client.embed(
-                texts=input_text,
-                model=model,
-                input_type=input_type
-            )
+            response = cohere_client.embed(texts=input_text, model=model, input_type=input_type)
             embeddings = response.embeddings
             return embeddings, {"dimensions": EmbeddingsTools.MODEL_DIMENSIONS[model]}
 
@@ -177,8 +180,7 @@ class EmbeddingsTools:
     @traced(type="tool")
     @staticmethod
     def get_mistral_embeddings(
-        input_text: Union[str, List[str]],
-        model: str = "mistral-embed"
+        input_text: Union[str, List[str]], model: str = "mistral-embed"
     ) -> Tuple[List[List[float]], Dict[str, int]]:
         """
         Generate embeddings for the given input text using Mistral AI's API.
@@ -207,40 +209,38 @@ class EmbeddingsTools:
 
         # Prepare the API request
         url = "https://api.mistral.ai/v1/embeddings"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
         # Ensure input_text is a list
         if isinstance(input_text, str):
             input_text = [input_text]
 
-        payload = {
-            "model": model,
-            "input": input_text
-        }
+        payload = {"model": model, "input": input_text}
 
         try:
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
 
-            embeddings = [item['embedding'] for item in data['data']]
+            embeddings = [item["embedding"] for item in data["data"]]
             dimensions = len(embeddings[0]) if embeddings else 0
 
             return embeddings, {"dimensions": dimensions}
 
         except requests.exceptions.RequestException as e:
-            if hasattr(e.response, 'text'):
+            if hasattr(e.response, "text"):
                 error_details = e.response.text
             else:
                 error_details = str(e)
-            raise requests.exceptions.RequestException(f"Error making request to Mistral AI API: {error_details}")
+            raise requests.exceptions.RequestException(
+                f"Error making request to Mistral AI API: {error_details}"
+            )
 
     @traced(type="tool")
     @staticmethod
-    def get_embeddings(input_text: Union[str, List[str]], provider: str, model: str) -> Tuple[List[List[float]], Dict[str, int]]:
+    def get_embeddings(
+        input_text: Union[str, List[str]], provider: str, model: str
+    ) -> Tuple[List[List[float]], Dict[str, int]]:
         """
         Generate embeddings for the given input text using the specified provider and model.
 
@@ -258,15 +258,23 @@ class EmbeddingsTools:
             ValueError: If the provider or model is not supported.
         """
         if provider == "openai":
-            if model in ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"]:
+            if model in [
+                "text-embedding-3-small",
+                "text-embedding-3-large",
+                "text-embedding-ada-002",
+            ]:
                 return EmbeddingsTools.get_openai_embeddings(input_text, model)
             else:
                 raise ValueError(f"Unsupported OpenAI embedding model: {model}")
         elif provider == "cohere":
             if model in [
-                "embed-english-v3.0", "embed-english-light-v3.0", "embed-english-v2.0",
-                "embed-english-light-v2.0", "embed-multilingual-v3.0", "embed-multilingual-light-v3.0",
-                "embed-multilingual-v2.0"
+                "embed-english-v3.0",
+                "embed-english-light-v3.0",
+                "embed-english-v2.0",
+                "embed-english-light-v2.0",
+                "embed-multilingual-v3.0",
+                "embed-multilingual-light-v3.0",
+                "embed-multilingual-v2.0",
             ]:
                 return EmbeddingsTools.get_cohere_embeddings(input_text, model)
             else:
@@ -278,4 +286,3 @@ class EmbeddingsTools:
                 raise ValueError(f"Unsupported Mistral embedding model: {model}")
         else:
             raise ValueError(f"Unsupported embedding provider: {provider}")
-

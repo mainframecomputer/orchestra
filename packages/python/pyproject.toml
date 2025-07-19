@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mainframe-orchestra"
-version = "0.0.35"
+version = "1.0.0"
 description = "Mainframe-Orchestra is a lightweight, open-source agentic framework for building LLM based pipelines and self-orchestrating multi-agent teams"
 authors = [
     "Mainframe Computer Inc. <hi@mainfra.me>",
@@ -18,24 +18,19 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-requests = "*"
+requests = ">=2.32.0"  # Fix for credential leak vulnerability
 pydantic = ">=2.0"
-anthropic = "*"
-openai = ">=1.0"
-cohere = "*"
+litellm = "*"
 beautifulsoup4 = "*"
 tqdm = "*"
 python-dotenv = "*"
 PyYAML = "*"
-ollama = "*"
-huggingface-hub = "*"
 lxml = "*"
-halo = "*"
-groq = "*"
 numpy = "*"
 faiss-cpu = "*"
 pinecone = "*"
@@ -43,11 +38,14 @@ sentence_splitter = "*"
 igraph = "*"
 leidenalg = "*"
 fake-useragent = "*"
-google-generativeai = "*"
 tzdata = "^2024.2"
 braintrust = "*"
-mcp = "*"
-fastmcp = "*"
+mcp = ">=1.7.0"  # Fix for MCP vulnerabilities - use newer version
+fastmcp = ">=2.3.0"  # Fix for FastMCP vulnerabilities - use newer version
+pillow = ">=11.0.0"  # Fix for BCn encoding buffer overflow
+protobuf = ">=5.29.0"  # Fix for protobuf DoS vulnerability
+urllib3 = ">=2.2.3"  # Fix for redirect control issues
+aiohttp = ">=3.11.20"  # Fix for parsing vulnerability
 
 [tool.poetry.extras]
 langchain_tools = [
@@ -57,11 +55,6 @@ langchain_tools = [
 ]
 matplotlib_tools = [
     "matplotlib"
-]
-yahoo_finance_tools = [
-    "yfinance",
-    "yahoofinance",
-    "pandas"
 ]
 fred_tools = [
     "fredapi",
@@ -74,14 +67,6 @@ audio_tools = [
 stripe_tools = [
     "stripe-agent-toolkit"
 ]
-
-[tool.poetry.dependencies.yfinance]
-version = "*"
-optional = true
-
-[tool.poetry.dependencies.yahoofinance]
-version = "*"
-optional = true
 
 [tool.poetry.dependencies.langchain-core]
 version = "*"

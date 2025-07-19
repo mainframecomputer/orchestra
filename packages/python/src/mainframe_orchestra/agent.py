@@ -1,7 +1,8 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+
+from typing import Callable, List, Optional, Set, Union
 
 from pydantic import BaseModel, Field
-from typing import Optional, Callable, Union, Set, List
 
 
 class Agent(BaseModel):

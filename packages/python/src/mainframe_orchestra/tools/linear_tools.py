@@ -1,9 +1,12 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 import os
-import requests
 from typing import Dict, List, Optional, Union
+
+import requests
+
 from ..utils.braintrust_utils import traced
+
 
 class LinearTools:
     def __init__(self):
@@ -11,34 +14,31 @@ class LinearTools:
         Initialize Linear API client with authentication.
         Requires LINEAR_API_KEY and LINEAR_TEAM_ID environment variables to be set.
         """
-        self.api_key = os.getenv('LINEAR_API_KEY')
-        self.team_id = os.getenv('LINEAR_TEAM_ID')
+        self.api_key = os.getenv("LINEAR_API_KEY")
+        self.team_id = os.getenv("LINEAR_TEAM_ID")
         if not self.api_key:
             raise ValueError("LINEAR_API_KEY environment variable is required")
         if not self.team_id:
             raise ValueError("LINEAR_TEAM_ID environment variable is required")
 
-        self.url = 'https://api.linear.app/graphql'
-        self.headers = {
-            'Authorization': self.api_key,
-            'Content-Type': 'application/json'
-        }
+        self.url = "https://api.linear.app/graphql"
+        self.headers = {"Authorization": self.api_key, "Content-Type": "application/json"}
 
     def _execute_query(self, query: str, variables: Dict = None) -> Dict:
         """
         Execute a GraphQL query using requests
         """
         response = requests.post(
-            self.url,
-            headers=self.headers,
-            json={'query': query, 'variables': variables}
+            self.url, headers=self.headers, json={"query": query, "variables": variables}
         )
         response.raise_for_status()
         return response.json()
 
     @classmethod
     @traced(type="tool")
-    def get_team_issues(cls, team_id: str = None, status: Optional[str] = None) -> Union[List[Dict], str]:
+    def get_team_issues(
+        cls, team_id: str = None, status: Optional[str] = None
+    ) -> Union[List[Dict], str]:
         """
         Get all issues for a team.
         If team_id is not provided, uses LINEAR_TEAM_ID from env.
@@ -117,10 +117,7 @@ class LinearTools:
                 }
             """
 
-            result = client._execute_query(mutation, {
-                "issueId": issue_id,
-                "statusId": status_id
-            })
+            result = client._execute_query(mutation, {"issueId": issue_id, "statusId": status_id})
             return result["data"]["issueUpdate"]
         except Exception as e:
             return f"Error updating issue status: {str(e)}"
@@ -156,9 +153,7 @@ class LinearTools:
                 }
             """
 
-            result = client._execute_query(search_gql, {
-                "query": search_query
-            })
+            result = client._execute_query(search_gql, {"query": search_query})
             return result["data"]["issueSearch"]["nodes"]
         except Exception as e:
             return f"Error searching issues: {str(e)}"
@@ -196,7 +191,7 @@ class LinearTools:
             for team in teams:
                 print(f"- {team['name']} (key: {team['key']})")
 
-            matching_team = next((team for team in teams if team['key'] == team_name), None)
+            matching_team = next((team for team in teams if team["key"] == team_name), None)
             if not matching_team:
                 return f"No team found with key: {team_name}"
 
@@ -234,7 +229,14 @@ class LinearTools:
 
     @traced(type="tool")
     @classmethod
-    def create_issue(cls, title: str, description: str, team_id: str = None, priority: Optional[int] = None, state_id: Optional[str] = None) -> Union[Dict, str]:
+    def create_issue(
+        cls,
+        title: str,
+        description: str,
+        team_id: str = None,
+        priority: Optional[int] = None,
+        state_id: Optional[str] = None,
+    ) -> Union[Dict, str]:
         """
         Create a new issue in Linear.
         If team_id is not provided, uses TEAM_ID from env.
@@ -254,7 +256,7 @@ class LinearTools:
 
             # Use the team_id directly if it looks like a UUID
             team_uuid = team_id or client.team_id
-            if not team_uuid.startswith('-') and len(team_uuid.split('-')) == 5:
+            if not team_uuid.startswith("-") and len(team_uuid.split("-")) == 5:
                 # Looks like a UUID, use it directly
                 pass
             else:
@@ -262,7 +264,7 @@ class LinearTools:
                 team_info = cls.get_team_by_name(team_uuid)
                 if isinstance(team_info, str):  # Error message
                     return f"Error getting team info: {team_info}"
-                team_uuid = team_info.get('id')
+                team_uuid = team_info.get("id")
                 if not team_uuid:
                     return "Could not find team UUID"
 
@@ -289,13 +291,16 @@ class LinearTools:
                 }
             """
 
-            result = client._execute_query(query, {
-                "title": title,
-                "description": description,
-                "teamId": team_uuid,
-                "priority": priority,
-                "stateId": state_id
-            })
+            result = client._execute_query(
+                query,
+                {
+                    "title": title,
+                    "description": description,
+                    "teamId": team_uuid,
+                    "priority": priority,
+                    "stateId": state_id,
+                },
+            )
             return result["data"]["issueCreate"]
         except Exception as e:
             return f"Error creating issue: {str(e)}"

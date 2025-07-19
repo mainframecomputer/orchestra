@@ -1,14 +1,17 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-import os
 import csv
 import json
+import os
 import xml.etree.ElementTree as ET
-from ..utils.braintrust_utils import traced
-from typing import Any, List, Dict, Union
+from typing import Any, Dict, List, Union
+
 import yaml
 
+from ..utils.braintrust_utils import traced
+
 debug_mode = False
+
 
 class FileTools:
     @traced(type="tool")
@@ -26,7 +29,7 @@ class FileTools:
             TypeError: If the input types are incorrect.
         """
         try:
-            #print(f"Attempting to save code to file: {file_path}")
+            # print(f"Attempting to save code to file: {file_path}")
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             with open(file_path, "w") as file:
                 file.write(code)
@@ -70,8 +73,8 @@ class FileTools:
         else:
             ignore_list = default_ignore_list
 
-        #print(f"Starting file structure generation for path: {base_path}")
-        #print(f"Ignore list: {ignore_list}")
+        # print(f"Starting file structure generation for path: {base_path}")
+        # print(f"Ignore list: {ignore_list}")
 
         try:
             # Convert both paths to absolute and normalize them
@@ -91,11 +94,11 @@ class FileTools:
             file_structure = {
                 "name": os.path.basename(abs_base_path),
                 "type": "directory",
-                "children": []
+                "children": [],
             }
 
             for item in os.listdir(abs_base_path):
-                if item in ignore_list or item.startswith('.'):
+                if item in ignore_list or item.startswith("."):
                     print(f"Skipping ignored or hidden item: {item}")
                     continue  # Skip ignored and hidden files/directories
 
@@ -104,25 +107,25 @@ class FileTools:
 
                 if os.path.isdir(item_path):
                     try:
-                        file_structure["children"].append(FileTools.generate_directory_tree(item_path))
+                        file_structure["children"].append(
+                            FileTools.generate_directory_tree(item_path)
+                        )
                     except PermissionError:
                         print(f"Permission denied for directory: {item_path}")
-                        file_structure["children"].append({
-                            "name": item,
-                            "type": "directory",
-                            "error": "Permission denied"
-                        })
+                        file_structure["children"].append(
+                            {"name": item, "type": "directory", "error": "Permission denied"}
+                        )
                 else:
                     try:
                         with open(item_path, "r", encoding="utf-8") as file:
                             file_contents = file.read()
-                            #print(f"Successfully read file contents: {item_path}")
+                            # print(f"Successfully read file contents: {item_path}")
                     except UnicodeDecodeError:
                         print(f"UTF-8 decoding failed for {item_path}, attempting ISO-8859-1")
                         try:
                             with open(item_path, "r", encoding="iso-8859-1") as file:
                                 file_contents = file.read()
-                                #print(f"Successfully read file contents with ISO-8859-1: {item_path}")
+                                # print(f"Successfully read file contents with ISO-8859-1: {item_path}")
                         except Exception as e:
                             print(f"Failed to read file: {item_path}, Error: {str(e)}")
                             file_contents = f"Error reading file: {str(e)}"
@@ -133,11 +136,9 @@ class FileTools:
                         print(f"Unexpected error reading file: {item_path}, Error: {str(e)}")
                         file_contents = f"Unexpected error: {str(e)}"
 
-                    file_structure["children"].append({
-                        "name": item,
-                        "type": "file",
-                        "contents": file_contents
-                    })
+                    file_structure["children"].append(
+                        {"name": item, "type": "file", "contents": file_contents}
+                    )
 
             print(f"Completed file structure generation for path: {abs_base_path}")
             return file_structure
@@ -176,7 +177,7 @@ class FileTools:
         print(f"Attempting to read file contents from: {full_file_path}")
 
         try:
-            with open(full_file_path, 'r', encoding='utf-8') as file:
+            with open(full_file_path, "r", encoding="utf-8") as file:
                 file_contents = file.read()
                 print("File contents successfully retrieved.")
                 return file_contents
@@ -186,23 +187,29 @@ class FileTools:
             return None
         except IOError as e:
             print(f"Error reading file: {e}")
-            print(f"IOError while reading file at FileTools.read_file_contents: {full_file_path}. Error: {str(e)}")
+            print(
+                f"IOError while reading file at FileTools.read_file_contents: {full_file_path}. Error: {str(e)}"
+            )
             return None
         except UnicodeDecodeError:
             print(f"Error: Unable to decode file contents using UTF-8 encoding: {full_file_path}")
-            print("UnicodeDecodeError at FileTools.read_file_contents: Attempting to read with ISO-8859-1 encoding")
+            print(
+                "UnicodeDecodeError at FileTools.read_file_contents: Attempting to read with ISO-8859-1 encoding"
+            )
             try:
-                with open(full_file_path, 'r', encoding='iso-8859-1') as file:
+                with open(full_file_path, "r", encoding="iso-8859-1") as file:
                     file_contents = file.read()
-                    #print("File contents successfully retrieved using ISO-8859-1 encoding.")
+                    # print("File contents successfully retrieved using ISO-8859-1 encoding.")
                     return file_contents
             except Exception as e:
                 print(f"Error: Failed to read file with ISO-8859-1 encoding: {e}")
-                #print(f"Error reading file with ISO-8859-1 encoding: {full_file_path}. Error: {str(e)}")
+                # print(f"Error reading file with ISO-8859-1 encoding: {full_file_path}. Error: {str(e)}")
                 return None
         except Exception as e:
             print(f"Unexpected error occurred while reading file: {e}")
-            print(f"Unexpected error in FileTools.read_file_contents: {full_file_path}. Error: {str(e)}")
+            print(
+                f"Unexpected error in FileTools.read_file_contents: {full_file_path}. Error: {str(e)}"
+            )
             return None
 
     @traced(type="tool")
@@ -222,15 +229,15 @@ class FileTools:
             csv.Error: If there's an error parsing the CSV file.
         """
         try:
-            with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
+            with open(file_path, "r", newline="", encoding="utf-8") as csvfile:
                 reader = csv.DictReader(csvfile)
                 return [row for row in reader]
         except FileNotFoundError:
             print(f"Error: CSV file not found at {file_path}")
-            return (f"Error: CSV file not found at {file_path}")
+            return f"Error: CSV file not found at {file_path}"
         except csv.Error as e:
             print(f"Error parsing CSV file: {e}")
-            return (f"Error parsing CSV file: {e}")
+            return f"Error parsing CSV file: {e}"
 
     @traced(type="tool")
     @staticmethod
@@ -249,14 +256,14 @@ class FileTools:
             json.JSONDecodeError: If there's an error parsing the JSON file.
         """
         try:
-            with open(file_path, 'r', encoding='utf-8') as jsonfile:
+            with open(file_path, "r", encoding="utf-8") as jsonfile:
                 return json.load(jsonfile)
         except FileNotFoundError:
             print(f"Error: JSON file not found at {file_path}")
-            return (f"Error: JSON file not found at {file_path}")
+            return f"Error: JSON file not found at {file_path}"
         except json.JSONDecodeError as e:
             print(f"Error parsing JSON file: {e}")
-            return (f"Error parsing JSON file: {e}")
+            return f"Error parsing JSON file: {e}"
 
     @traced(type="tool")
     @staticmethod
@@ -279,10 +286,10 @@ class FileTools:
             return tree.getroot()
         except FileNotFoundError:
             print(f"Error: XML file not found at {file_path}")
-            return (f"Error: XML file not found at {file_path}")
+            return f"Error: XML file not found at {file_path}"
         except ET.ParseError as e:
             print(f"Error parsing XML file: {e}")
-            return (f"Error parsing XML file: {e}")
+            return f"Error parsing XML file: {e}"
 
     @traced(type="tool")
     @staticmethod
@@ -301,14 +308,14 @@ class FileTools:
             yaml.YAMLError: If there's an error parsing the YAML file.
         """
         try:
-            with open(file_path, 'r', encoding='utf-8') as yamlfile:
+            with open(file_path, "r", encoding="utf-8") as yamlfile:
                 return yaml.safe_load(yamlfile)
         except FileNotFoundError:
             print(f"Error: YAML file not found at {file_path}")
-            return (f"Error: YAML file not found at {file_path}")
+            return f"Error: YAML file not found at {file_path}"
         except yaml.YAMLError as e:
             print(f"Error parsing YAML file: {e}")
-            return (f"Error parsing YAML file: {e}")
+            return f"Error parsing YAML file: {e}"
 
     @traced(type="tool")
     @staticmethod
@@ -329,7 +336,7 @@ class FileTools:
             KeyError: If the specified search column doesn't exist in the CSV.
         """
         try:
-            with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
+            with open(file_path, "r", newline="", encoding="utf-8") as csvfile:
                 reader = csv.DictReader(csvfile)
 
                 # Check if the search_column exists
@@ -340,14 +347,16 @@ class FileTools:
                 return [row for row in reader if row[search_column] == str(search_value)]
         except FileNotFoundError:
             print(f"Error: CSV file not found at {file_path}")
-            return (f"Error: CSV file not found at {file_path}")
+            return f"Error: CSV file not found at {file_path}"
         except KeyError as e:
             print(f"Error: {e}")
-            return (f"Error: {e}")
+            return f"Error: {e}"
 
     @traced(type="tool")
     @staticmethod
-    def search_json(data: Union[Dict[str, Any], List[Any]], search_key: str, search_value: Any) -> List[Any]:
+    def search_json(
+        data: Union[Dict[str, Any], List[Any]], search_key: str, search_value: Any
+    ) -> List[Any]:
         """
         Search for a specific key-value pair in a JSON structure and return matching items.
 
@@ -376,7 +385,9 @@ class FileTools:
 
     @traced(type="tool")
     @staticmethod
-    def search_xml(root: ET.Element, tag: str, attribute: str = None, value: str = None) -> List[ET.Element]:
+    def search_xml(
+        root: ET.Element, tag: str, attribute: str = None, value: str = None
+    ) -> List[ET.Element]:
         """
         Search for specific elements in an XML structure.
 
@@ -396,7 +407,9 @@ class FileTools:
 
     @traced(type="tool")
     @staticmethod
-    def search_yaml(data: Union[Dict[str, Any], List[Any]], search_key: str, search_value: Any) -> List[Any]:
+    def search_yaml(
+        data: Union[Dict[str, Any], List[Any]], search_key: str, search_value: Any
+    ) -> List[Any]:
         """
         Search for a specific key-value pair in a YAML structure and return matching items.
 
@@ -428,7 +441,7 @@ class FileTools:
         if directory and not os.path.exists(directory):
             os.makedirs(directory)
 
-        with open(file_path, 'w') as file:
+        with open(file_path, "w") as file:
             file.write(content)
 
         # Get the absolute path
@@ -437,7 +450,7 @@ class FileTools:
 
     @traced(type="tool")
     @staticmethod
-    def write_csv(file_path: str, data: List[List[str]], delimiter: str = ',') -> Union[bool, str]:
+    def write_csv(file_path: str, data: List[List[str]], delimiter: str = ",") -> Union[bool, str]:
         """
         Write data to a CSV file.
 
@@ -450,7 +463,7 @@ class FileTools:
             Union[bool, str]: True if the data was successfully written, or an error message as a string.
         """
         try:
-            with open(file_path, 'w', newline='') as file:
+            with open(file_path, "w", newline="") as file:
                 writer = csv.writer(file, delimiter=delimiter)
                 writer.writerows(data)
             return f"Successfully wrote CSV file to {file_path}."
@@ -497,7 +510,9 @@ class FileTools:
 
     @traced(type="tool")
     @staticmethod
-    def filter_rows(data: List[List[str]], column_index: int, value: str) -> Union[List[List[str]], str]:
+    def filter_rows(
+        data: List[List[str]], column_index: int, value: str
+    ) -> Union[List[List[str]], str]:
         """
         Filter rows in a list of lists representing CSV data based on a specific column value.
 
@@ -546,7 +561,7 @@ class FileTools:
             Union[List[List[str]], str]: The first few lines of the CSV as a list of lists, or an error message as a string.
         """
         try:
-            with open(file_path, 'r', newline='') as csvfile:
+            with open(file_path, "r", newline="") as csvfile:
                 csv_reader = csv.reader(csvfile)
                 peeked_data = [next(csv_reader) for _ in range(num_lines)]
             return peeked_data

@@ -1,7 +1,9 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
+
 from ..utils.braintrust_utils import traced
+
 
 class CalculatorTools:
     @traced(type="tool")
@@ -27,53 +29,55 @@ class CalculatorTools:
             raise ValueError("At least one number is required for the operation.")
 
         # Convert all args to float, except for factorial which requires int
-        if operation != 'factorial':
+        if operation != "factorial":
             args = [float(arg) for arg in args]
 
         result = args[0]
 
-        if operation in ['add', 'subtract', 'multiply', 'divide']:
+        if operation in ["add", "subtract", "multiply", "divide"]:
             if len(args) < 2:
                 raise ValueError("At least two numbers are required for this operation.")
 
-            if operation == 'add':
+            if operation == "add":
                 for num in args[1:]:
                     result += num
-            elif operation == 'subtract':
+            elif operation == "subtract":
                 for num in args[1:]:
                     result -= num
-            elif operation == 'multiply':
+            elif operation == "multiply":
                 for num in args[1:]:
                     result *= num
-            elif operation == 'divide':
+            elif operation == "divide":
                 for num in args[1:]:
                     if num == 0:
                         raise ValueError("Cannot divide by zero")
                     result /= num
-        elif operation == 'exponent':
+        elif operation == "exponent":
             if len(args) != 2:
                 raise ValueError("Exponent operation requires exactly two numbers.")
             result = args[0] ** args[1]
-        elif operation == 'root':
+        elif operation == "root":
             if len(args) != 2:
                 raise ValueError("Root operation requires exactly two numbers.")
             if args[1] == 0:
                 raise ValueError("Cannot calculate 0th root")
             result = args[0] ** (1 / args[1])
-        elif operation == 'modulo':
+        elif operation == "modulo":
             if len(args) != 2:
                 raise ValueError("Modulo operation requires exactly two numbers.")
             if args[1] == 0:
                 raise ValueError("Cannot perform modulo with zero")
             result = args[0] % args[1]
-        elif operation == 'factorial':
+        elif operation == "factorial":
             if len(args) != 1 or args[0] < 0 or not isinstance(args[0], int):
                 raise ValueError("Factorial operation requires exactly one non-negative integer.")
             result = 1
             for i in range(1, args[0] + 1):
                 result *= i
         else:
-            raise ValueError("Invalid operation. Choose 'add', 'subtract', 'multiply', 'divide', 'exponent', 'root', 'modulo', or 'factorial'.")
+            raise ValueError(
+                "Invalid operation. Choose 'add', 'subtract', 'multiply', 'divide', 'exponent', 'root', 'modulo', or 'factorial'."
+            )
 
         # Convert the result to a string before returning
         return str(result)

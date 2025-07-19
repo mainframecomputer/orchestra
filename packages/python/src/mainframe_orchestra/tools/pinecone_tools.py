@@ -1,16 +1,22 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 import os
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 import numpy as np
+
 from ..utils.braintrust_utils import traced
+
 
 def check_pinecone():
     try:
         import pinecone
     except ModuleNotFoundError:
-        raise ImportError("pinecone is required for Pinecone tools. Install with `pip install pinecone`")
+        raise ImportError(
+            "pinecone is required for Pinecone tools. Install with `pip install pinecone`"
+        )
     return pinecone
+
 
 class PineconeTools:
     def __init__(self, api_key: str = None):
@@ -22,7 +28,9 @@ class PineconeTools:
         """
         self.api_key = api_key or os.getenv("PINECONE_API_KEY")
         if not self.api_key:
-            raise ValueError("Pinecone API key is required. Please provide it or set the PINECONE_API_KEY environment variable.")
+            raise ValueError(
+                "Pinecone API key is required. Please provide it or set the PINECONE_API_KEY environment variable."
+            )
         self.pc = check_pinecone().Pinecone(api_key=self.api_key)
 
     @traced(type="tool")
@@ -30,9 +38,15 @@ class PineconeTools:
         pinecone_client = check_pinecone().Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         return pinecone_client.Index(name)
 
-
     @traced(type="tool")
-    def create_index(self, name: str, dimension: int, metric: str = "cosine", cloud: str = "aws", region: str = "us-east-1") -> None:
+    def create_index(
+        self,
+        name: str,
+        dimension: int,
+        metric: str = "cosine",
+        cloud: str = "aws",
+        region: str = "us-east-1",
+    ) -> None:
         """
         Create a new Pinecone index.
 
@@ -51,7 +65,7 @@ class PineconeTools:
                 name=name,
                 dimension=dimension,
                 metric=metric,
-                spec=check_pinecone().ServerlessSpec(cloud=cloud, region=region)
+                spec=check_pinecone().ServerlessSpec(cloud=cloud, region=region),
             )
             print(f"Index '{name}' created successfully.")
         except Exception as e:
@@ -110,7 +124,14 @@ class PineconeTools:
             raise Exception(f"Error upserting vectors: {str(e)}")
 
     @traced(type="tool")
-    def query_index(self, index_name: str, query_vector: List[float], top_k: int = 10, filter: Dict = None, include_metadata: bool = True) -> Dict[str, Any]:
+    def query_index(
+        self,
+        index_name: str,
+        query_vector: List[float],
+        top_k: int = 10,
+        filter: Dict = None,
+        include_metadata: bool = True,
+    ) -> Dict[str, Any]:
         """
         Query a Pinecone index for similar vectors.
 
@@ -130,10 +151,7 @@ class PineconeTools:
         try:
             index = self.pc.Index(index_name)
             results = index.query(
-                vector=query_vector,
-                top_k=top_k,
-                include_metadata=include_metadata,
-                filter=filter
+                vector=query_vector, top_k=top_k, include_metadata=include_metadata, filter=filter
             )
             return results
         except Exception as e:

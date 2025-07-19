@@ -1,21 +1,21 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
-from typing import Optional
-from dotenv import load_dotenv
 import os
+from typing import Optional
+
+from dotenv import load_dotenv
 from stripe_agent_toolkit.api import StripeAPI
-from ..utils.braintrust_utils import traced
 from stripe_agent_toolkit.configuration import Context
+
+from ..utils.braintrust_utils import traced
+
 
 class StripeTools:
     _instance = None
 
     def __init__(self):
         load_dotenv()
-        self.api = StripeAPI(
-            secret_key=os.getenv('STRIPE_API_KEY'),
-            context=Context()
-        )
+        self.api = StripeAPI(secret_key=os.getenv("STRIPE_API_KEY"), context=Context())
 
     @classmethod
     @traced(type="tool")
@@ -108,7 +108,9 @@ class StripeTools:
         Returns:
             str: JSON string containing the created price object
         """
-        return cls.get_api().run("create_price", product=product, currency=currency, unit_amount=unit_amount)
+        return cls.get_api().run(
+            "create_price", product=product, currency=currency, unit_amount=unit_amount
+        )
 
     @traced(type="tool")
     @classmethod
@@ -169,7 +171,9 @@ class StripeTools:
         Returns:
             str: JSON string containing the created invoice item object
         """
-        return cls.get_api().run("create_invoice_item", customer=customer, price=price, invoice=invoice)
+        return cls.get_api().run(
+            "create_invoice_item", customer=customer, price=price, invoice=invoice
+        )
 
     @traced(type="tool")
     @classmethod

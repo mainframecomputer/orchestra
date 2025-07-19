@@ -1,11 +1,14 @@
-# Copyright 2024 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
+# Copyright 2025 Mainframe-Orchestra Contributors. Licensed under Apache License 2.0.
 
 import os
-from typing import Dict, Any, Optional, Tuple, Union
-from dotenv import load_dotenv
-import requests
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional, Tuple, Union
+
+import requests
+from dotenv import load_dotenv
+
 from ..utils.braintrust_utils import traced
+
 
 class AmadeusTools:
     @staticmethod
@@ -22,7 +25,7 @@ class AmadeusTools:
         data = {
             "grant_type": "client_credentials",
             "client_id": api_key,
-            "client_secret": api_secret
+            "client_secret": api_secret,
         }
 
         response = requests.post(token_url, data=data)
@@ -43,7 +46,7 @@ class AmadeusTools:
         non_stop: bool = False,
         currency: str = "USD",
         max_price: Optional[int] = None,
-        max_results: int = 10
+        max_results: int = 10,
     ) -> Dict[str, Any]:
         """
         Search for flight offers using Amadeus API.
@@ -69,10 +72,7 @@ class AmadeusTools:
 
         url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
 
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
         params = {
             "originLocationCode": origin,
@@ -82,7 +82,7 @@ class AmadeusTools:
             "children": children,
             "infants": infants,
             "currencyCode": currency,
-            "max": max_results
+            "max": max_results,
         }
 
         if return_date:
@@ -103,7 +103,7 @@ class AmadeusTools:
             return response.json()
         except requests.exceptions.RequestException as e:
             error_message = f"Error searching for flight offers: {str(e)}"
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 error_message += f"\nResponse status code: {e.response.status_code}"
                 error_message += f"\nResponse content: {e.response.text}"
             return error_message
@@ -115,7 +115,7 @@ class AmadeusTools:
         destination: str,
         departure_date: Union[str, Tuple[str, str]],
         return_date: Optional[Union[str, Tuple[str, str]]] = None,
-        adults: int = 1
+        adults: int = 1,
     ) -> Dict[str, Any]:
         """
         Find the cheapest flight offer for a given route and date or date range using the Amadeus Flight Offers Search API.
@@ -139,10 +139,7 @@ class AmadeusTools:
 
         url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
 
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
         def date_range(start_date: str, end_date: str):
             start = datetime.fromisoformat(start_date)
@@ -154,11 +151,19 @@ class AmadeusTools:
                 yield date.strftime("%Y-%m-%d")
                 date += timedelta(days=1)
 
-        departure_dates = [departure_date] if isinstance(departure_date, str) else list(date_range(*departure_date))
-        return_dates = [return_date] if return_date and isinstance(return_date, str) else (list(date_range(*return_date)) if return_date else [None])
+        departure_dates = (
+            [departure_date]
+            if isinstance(departure_date, str)
+            else list(date_range(*departure_date))
+        )
+        return_dates = (
+            [return_date]
+            if return_date and isinstance(return_date, str)
+            else (list(date_range(*return_date)) if return_date else [None])
+        )
 
         cheapest_offer = None
-        cheapest_price = float('inf')
+        cheapest_price = float("inf")
 
         for dep_date in departure_dates:
             for ret_date in return_dates:
@@ -168,7 +173,7 @@ class AmadeusTools:
                     "departureDate": dep_date,
                     "adults": adults,
                     "max": 1,
-                    "currencyCode": "USD"
+                    "currencyCode": "USD",
                 }
                 if ret_date:
                     params["returnDate"] = ret_date
@@ -177,9 +182,9 @@ class AmadeusTools:
                 response.raise_for_status()
 
                 data = response.json()
-                if data.get('data'):
-                    offer = data['data'][0]
-                    price = float(offer['price']['total'])
+                if data.get("data"):
+                    offer = data["data"][0]
+                    price = float(offer["price"]["total"])
                     if price < cheapest_price:
                         cheapest_price = price
                         cheapest_offer = offer
@@ -188,23 +193,23 @@ class AmadeusTools:
             return {"error": "No flights found for the given criteria"}
 
         result = {
-            "price": cheapest_offer['price']['total'],
-            "departureDate": cheapest_offer['itineraries'][0]['segments'][0]['departure']['at'],
-            "airline": cheapest_offer['validatingAirlineCodes'][0],
-            "details": cheapest_offer
+            "price": cheapest_offer["price"]["total"],
+            "departureDate": cheapest_offer["itineraries"][0]["segments"][0]["departure"]["at"],
+            "airline": cheapest_offer["validatingAirlineCodes"][0],
+            "details": cheapest_offer,
         }
 
         if return_date:
-            result["returnDate"] = cheapest_offer['itineraries'][-1]['segments'][0]['departure']['at']
+            result["returnDate"] = cheapest_offer["itineraries"][-1]["segments"][0]["departure"][
+                "at"
+            ]
 
         return result
 
     @traced(type="tool")
     @staticmethod
     def get_flight_inspiration(
-        origin: str,
-        max_price: Optional[int] = None,
-        currency: str = "EUR"
+        origin: str, max_price: Optional[int] = None, currency: str = "EUR"
     ) -> Dict[str, Any]:
         """
         Get flight inspiration using the Flight Inspiration Search API.
@@ -238,15 +243,9 @@ class AmadeusTools:
 
         url = "https://test.api.amadeus.com/v1/shopping/flight-destinations"
 
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-        params = {
-            "origin": origin,
-            "currency": currency
-        }
+        params = {"origin": origin, "currency": currency}
 
         if max_price:
             params["maxPrice"] = max_price
@@ -259,4 +258,3 @@ class AmadeusTools:
             print(f"Response content: {response.text}")
             raise
         return response.json()
-
