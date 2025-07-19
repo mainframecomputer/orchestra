@@ -108,9 +108,3 @@ coordinator = Agent(
     llm=default_coordinator_llm
 )
 ```
-
-In this example, the coordinator agent has the ability to delegate tasks to other agents using the conduct tool. The agents can communicate and pass information between each other, enabling complex tasks to be decomposed and executed efficiently.
-
-## Conclusion
-
-Orchestra's orchestration module offers a flexible approach to agent collaboration and task delegation. By treating orchestration capabilities as modular tools that can be assigned to any agent, Orchestra enables the construction of  multi-agent interactions with clear boundaries and dependencies between tasks. This tool-based architecture allows for dynamic task decomposition, intelligent agent assignment, and efficient data flows, creating a truly dynamic and adaptive system capable of handling complex, real-world applications.

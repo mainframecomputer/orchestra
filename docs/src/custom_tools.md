@@ -79,7 +79,7 @@ class AdvancedNumpyTools:
                 error_msg = "Error: Input array is empty. Please provide a non-empty array of numbers."
                 print(error_msg)
                 return error_msg
-            
+
             if operation == 'mean':
                 return float(np.mean(arr))
             elif operation == 'median':
@@ -191,19 +191,33 @@ class OpenWeatherMapTools:
         return self._make_request(endpoint, params)
 ```
 
-In this example, we've created a custom tool class `OpenWeatherMapTools` with methods for fetching current weather, forecast, and air pollution data for a given city or coordinates. 
+In this example, we've created a custom tool class `OpenWeatherMapTools` with methods for fetching current weather, forecast, and air pollution data for a given city or coordinates.
 
-To assign them to a weather agent, you would pass them to the agent like this: 
+To assign them to a weather agent, you would pass them to the agent like this:
 
 ```python
+import asyncio
 from mainframe_orchestra import Agent, OpenrouterModels
-weather_reporter = Agent(
-    role="Weather Reporter",
-    goal="Report on weather conditions for a given city",
-    attributes="knowledgeable, precise, helpful",
-    tools={OpenWeatherMapTools.get_current_weather, OpenWeatherMapTools.get_forecast, OpenWeatherMapTools.get_air_pollution},
-    llm=OpenrouterModels.haiku
-)
+
+async def main():
+    weather_tools = OpenWeatherMapTools()
+
+    weather_reporter = Agent(
+        role="Weather Reporter",
+        goal="Report on weather conditions for a given city",
+        attributes="knowledgeable, precise, helpful",
+        tools={weather_tools.get_current_weather, weather_tools.get_forecast, weather_tools.get_air_pollution},
+        llm=OpenrouterModels.haiku
+    )
+
+    # Example usage with async task
+    result = await Task.create_async(
+        agent=weather_reporter,
+        instruction="Get the current weather and 3-day forecast for Paris, France"
+    )
+    print(result)
+
+asyncio.run(main())
 ```
 
 Then, this agent can use any of these tools within their tasks to report on the weather conditions for different cities.
@@ -211,4 +225,3 @@ Then, this agent can use any of these tools within their tasks to report on the 
 ### Conclusion
 
 Creating custom tools is an essential skill for extending the capabilities of Orchestra to meet your specific needs. By following the guidelines and best practices outlined in this chapter, you can develop robust, well-documented, and easily integrable custom tools that enhance the power and flexibility of your AI-driven workflows.
-
