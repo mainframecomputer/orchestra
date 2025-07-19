@@ -37,26 +37,35 @@ customer_support_agent = Agent(
 Here's an example demonstrating how an agent can be created and then integrated into multiple tasks within a Orchestra workflow:
 
 ```python
+import asyncio
 from mainframe_orchestra import Task, Agent, OpenrouterModels
 
-data_analyst_agent = Agent(
-    role="data analyst",
-    goal="to provide insights and recommendations based on data analysis",
-    attributes="analytical, detail-oriented, and proficient in statistical methods",
-    llm=OpenrouterModels.haiku
-)
-
-def analysis_task (sales_data):
-    return Task.create(
-       agent=data_analyst_agent,
-       context=f"The sales data for the past quarter is attached: '{sales_data}'.",
-       instruction="Analyze the sales data and provide recommendations for improving revenue."
+async def main():
+    data_analyst_agent = Agent(
+        role="data analyst",
+        goal="to provide insights and recommendations based on data analysis",
+        attributes="analytical, detail-oriented, and proficient in statistical methods",
+        llm=OpenrouterModels.haiku
     )
+
+    async def analysis_task(sales_data):
+        return await Task.create_async(
+           agent=data_analyst_agent,
+           context=f"The sales data for the past quarter is attached: '{sales_data}'.",
+           instruction="Analyze the sales data and provide recommendations for improving revenue."
+        )
+
+    # Example usage
+    sales_data = "Q4 2024 sales data..."
+    result = await analysis_task(sales_data)
+    print(result)
+
+asyncio.run(main())
 ```
 
 ### Assigning Tools to Agents
 
-Agents can be assigned tools to enhance their capabilities and enable them to perform specific actions. Tools are functions that the agent can use to interact with external systems, process data, or perform specialized tasks. 
+Agents can be assigned tools to enhance their capabilities and enable them to perform specific actions. Tools are functions that the agent can use to interact with external systems, process data, or perform specialized tasks.
 
 The agent will have the opportunity to use tools provided to the agent or the task to assist in its completion. The tools are passed to the agent's 'tools' parameter during initialization, and the agent will then be able to see and use the tools before completing their final response. They can call tools once, recursively, or multiple times in parallel. For more on tool use see the [tool use](./tool-use) page.
 
@@ -70,7 +79,7 @@ researcher = Agent(
     goal="find relevant Python agent repositories with open issues",
     attributes="analytical, detail-oriented, able to assess repository relevance and popularity",
     llm=OpenaiModels.gpt_4o_mini,
-    tools={GitHubTools.search_repositories, GitHubTools.get_repo_details}
+    tools=[GitHubTools.search_repositories, GitHubTools.get_repo_details]
 )
 ```
 
@@ -108,7 +117,7 @@ researcher = Agent(
     goal="find relevant Python agent repositories with open issues",
     attributes="analytical, detail-oriented, able to assess repository relevance and popularity",
     llm=[AnthropicModels.sonnet_3_5, AnthropicModels.haiku_3_5],
-    tools={GitHubTools.search_repositories, GitHubTools.get_repo_details}
+    tools=[GitHubTools.search_repositories, GitHubTools.get_repo_details]
 )
 ```
 

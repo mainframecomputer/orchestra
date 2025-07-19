@@ -8,17 +8,17 @@ The tool use loop is a core feature of Orchestra that allows agents to dynamical
 
 When a task is run, it first checks if tools are assigned to the task (either through the agent or directly to the task). If tools are present, it enters the tool-use loop by calling `_execute_tool_loop()`. If no tools are assigned, it skips the loop and directly executes the task using the LLM.
 
-The method now also accepts an optional `callback` parameter, allowing for real-time updates during task execution. 
+The method now also accepts an optional `callback` parameter, allowing for real-time updates during task execution.
 
 ### Tool Loop Mechanism
 
 The tool use loop consists of several key steps:
 
-- **Task Analysis:** The LLM evaluates the current state of the task, including the original instruction, context, and if available, the results of previous tool usage. 
-- **Decision Making:** Based on the analysis, the LLM decides whether to use a tool or if it has sufficient information to complete the task. 
-- **Tool Selection and Parameter Specification:** If tool use is necessary, the LLM selects the most appropriate tool(s) and specifies the parameters in a JSON format. 
-- **Tool Execution:** The selected tool(s) are executed with the specified parameters, and the results are captured. 
-- **Context Update:** The tool execution results are added to the task's context for consideration in subsequent iterations. 
+- **Task Analysis:** The LLM evaluates the current state of the task, including the original instruction, context, and if available, the results of previous tool usage.
+- **Decision Making:** Based on the analysis, the LLM decides whether to use a tool or if it has sufficient information to respond.
+- **Tool Selection and Parameter Specification:** If tool use is necessary, the LLM selects the most appropriate tool(s) and specifies the parameters in a JSON format.
+- **Tool Execution:** The selected tool(s) are executed with the specified parameters, and the results are captured.
+- **Context Update:** The tool execution results are added to the task's context for consideration in subsequent iterations.
 - **Loop Continuation:** The process repeats until the LLM determines it has gathered enough information or reaches a maximum number of iterations.
 
 The LLM communicates its decisions through a JSON response format:
@@ -41,7 +41,7 @@ Or, when no further tool calls are needed:
 
 ```
 {
-    "status": "READY"
+    "tool_calls": []
 }
 ```
 
@@ -49,7 +49,7 @@ Or, when no further tool calls are needed:
 
 Tools are assigned to a task by passing a set of callable objects to the `tools` parameter when creating a Task object. The LLM can then use these tools as needed during task execution.
 
-```
+```python
 from mainframe_orchestra import Agent, Task, WebTools
 
 web_researcher_agent = Agent(
@@ -72,11 +72,26 @@ This process continues iteratively, with the LLM having the ability to correct e
 
 ### Maximum Iterations and Issue Prevention
 
-To prevent potential issues arising from infinite loops or excessive token consumption, Orchestra implements a maximum iterations limit in its tool use loop. This safeguard ensures that the task execution process remains bounded and controlled, even in complex scenarios.
+To prevent potential issues arising from infinite loops or excessive token consumption, Orchestra implements a configurable maximum iterations limit in its tool use loop. This safeguard ensures that the task execution process remains bounded and controlled, even in complex scenarios.
 
-The maximum iterations limit acts as a safety net, preventing the LLM from getting stuck in a loop of repeated tool calls or failing to reach a conclusion. When the limit is reached, the system gracefully terminates the tool use loop and proceeds to the final task execution phase. This approach ensures that the task always completes within a reasonable timeframe and resource allocation. 
+Orchestra v1.0.0 introduces the `max_iterations` parameter, allowing you to customize the iteration limit per task:
 
-It's important to note that tasks completed without successfully using the tools should be investigated if the maximum iterations is reached and the `Warning: Maximum iterations of tool use loop reached without completion.` is printed. There are many potential reasons for this type of outcome, including the model being too small or if the tools are returnign unexpected values. To debug this, you can call the tool directly to inspect its outputs, and try to work with different LLMs to test. The docstrings for each tool should also provide guidance on the expected format of the tool's output.
+```python
+import asyncio
+
+async def main():
+    result = await Task.create_async(
+        agent=agent,
+        instruction="Complex task that might require many tool calls",
+        max_iterations=25  # Custom limit instead of default 50
+    )
+
+asyncio.run(main())
+```
+
+The maximum iterations limit acts as a safety net, preventing the LLM from getting stuck in a loop of repeated tool calls or failing to reach a conclusion. When the limit is reached, the system gracefully terminates the tool use loop and proceeds to the final task execution phase. This approach ensures that the task always completes within a reasonable timeframe and resource allocation.
+
+It's important to note that tasks completed without successfully using the tools should be investigated if the maximum iterations is reached and the `Warning: Maximum iterations of tool use loop reached without completion.` is printed. There are many potential reasons for this type of outcome, including the model being too small or if the tools are returning unexpected values. To debug this, you can call the tool directly to inspect its outputs, and try to work with different LLMs to test. The docstrings for each tool should also provide guidance on the expected format of the tool's output.
 
 ### Ensuring Tool Functionality
 
@@ -107,14 +122,16 @@ Ensure each tool function has a clear, concise docstring explaining its purpose,
 Provide hints or guidelines in the task instruction or context about when certain tools might be useful. This can steer the LLM towards effective tool usage without overly constraining its decision-making.
 
 ```python
-def response_task(agent, user_query):
-    return Task.create(
+import asyncio
+
+async def response_task(agent, user_query):
+    return await Task.create_async(
         agent=agent,
         context=f"Customer inquiry to resolve: {user_query}",
         instruction="""
-        Answer the customer's question using the available tools. 
-        If the query is about order status, use the check_order_status tool. 
-        For complex issues not covered by specific tools, search the knowledge base. 
+        Answer the customer's question using the available tools.
+        If the query is about order status, use the check_order_status tool.
+        For complex issues not covered by specific tools, search the knowledge base.
         If you can't find a satisfactory answer, escalate to a human agent.
         """,
     )
@@ -136,4 +153,4 @@ The LLM can use tools recursively, calling a tool multiple times with refined pa
 
 ### Conclusion
 
-Agentic tool use in Orchestra provides a powerful mechanism for creating flexible, intelligent workflows. By carefully designing and assigning tools, and providing appropriate guidance, you can enable LLMs to tackle complex tasks efficiently and effectively. The updated implementation offers more control over task execution, better error handling, and real-time feedback through callbacks.
+Agentic tool use in Orchestra provides a powerful mechanism for creating flexible, intelligent workflows. By carefully designing and assigning tools, and providing appropriate guidance, you can enable LLMs to tackle complex tasks efficiently and effectively. The updated implementation offers more control over task execution through configurable iteration limits, better error handling, and real-time feedback through callbacks.

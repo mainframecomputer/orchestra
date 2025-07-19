@@ -1,12 +1,12 @@
 # Tasks
 
-The Task class is the fundamental building block of Orchestra, encapsulating the concept of a single discrete unit of work within an AI workflow. 
+The Task class is the fundamental building block of Orchestra, encapsulating the concept of a single discrete unit of work within an AI workflow.
 
 ### Task-Centric Approach
 
-Within organizations, businesses, operations, and projects, tasks are the fundamental units of activity. These tasks, performed by individuals with specific roles and utilizing various tools, form the backbone of standard operating procedures (SOPs). 
+Within organizations, businesses, operations, and projects, tasks are the fundamental units of activity. These tasks, performed by individuals with specific roles and utilizing various tools, form the backbone of standard operating procedures (SOPs).
 
-Many AI frameworks are built around conversation patterns and inter-agent communication, and while this approach has its merits, it often lacks the structure and predictability that real-world operations require. 
+Many AI frameworks are built around conversation patterns and inter-agent communication, and while this approach has its merits, it often lacks the structure and predictability that real-world operations require.
 
 The task-centric design of Orchestra closely mirrors how human organizations function. By focusing on discrete units of work with clear inputs and outputs, the framework provides a structured environment that improves reliability, consistency, and manageability of AI systems.
 
@@ -18,7 +18,41 @@ This page covers the Task class, its implementation, and best practices for util
 
 The Task class in Orchestra is defined in the task.py file. It's the core component for creating and executing tasks.
 
-The `Task.create()` method is used to create a task and most often is used with the following parameters:
+### Task Creation Methods
+
+Orchestra v1.0.0 introduces a clear separation between synchronous and asynchronous task execution:
+
+- **`Task.create()`**: Synchronous execution that blocks until completion. Internally manages its own event loop and thread handling.
+- **`Task.create_async()`**: Asynchronous execution that returns a coroutine. Must be awaited and used within an async context.
+
+This separation provides better control over execution patterns and improved stability in different environments.
+
+#### Synchronous Usage
+```python
+# Synchronous - blocks until complete
+result = Task.create(
+    agent=agent,
+    instruction="Your instruction here"
+)
+print(result)
+```
+
+#### Asynchronous Usage
+```python
+import asyncio
+
+async def main():
+    # Asynchronous - must be awaited
+    result = await Task.create_async(
+        agent=agent,
+        instruction="Your instruction here"
+    )
+    print(result)
+
+asyncio.run(main())
+```
+
+The `Task.create_async()` method is used to create a task and most often is used with the following parameters:
 - agent: The agent assigned to the task
 - messages: A list of messages to be used as conversation history for the task
 - instruction: Specific directions for the task
@@ -30,6 +64,7 @@ The task class has a few additional optional parameters that can be used to furt
 - `messages`: A list of messages to be used as conversation history for the task.
 - `temperature`: The temperature of the language model.
 - `max_tokens`: The maximum number of tokens to generate.
+- `max_iterations`: The maximum number of tool loop iterations (default: 50).
 - `tools`: A list of tools that the language model / agent can use, specific to the task. Adds to the agents tools.
 - `llm`: The language model to use, specific to the task. Overrides the default language model for the agent assigned to the task.
 - `require_json_output`: If provided and set to `True`, the task will expect a valid JSON output from the language model. It utilizes JSON mode from the LLM API providers to ensure the output is valid JSON.
@@ -39,10 +74,11 @@ The task class has a few additional optional parameters that can be used to furt
 
 ### Execution and Integration
 
-The `Task.create()` method is responsible for the creation and execution of a task, generating the response from the specified language model. It handles prompt construction, language model processing, tool-use and function calling execution, error handling, and retries.
+Both `Task.create()` and `Task.create_async()` methods are responsible for the creation and execution of a task, generating the response from the specified language model. They handle prompt construction, language model processing, tool-use and function calling execution, error handling, and retries.
 
-Here's an example of how to use the Task class, where the task is to research events in a given location for a given date span, and write a report on the events found.
+Here are examples of how to use the Task class, where the task is to research events in a given location for a given date span, and write a report on the events found.
 
+**Synchronous example:**
 ```python
 def research_events(destination, dates, interests):
     events_report = Task.create(
@@ -53,10 +89,24 @@ def research_events(destination, dates, interests):
     return events_report
 ```
 
+**Asynchronous example:**
+```python
+import asyncio
+
+async def research_events(destination, dates, interests):
+    events_report = await Task.create_async(
+        agent=web_research_agent,
+        context=f"User's intended destination: {destination}\n\nUser's intended dates of travel: {dates}\n\nUser Interests: {interests}",
+        instruction="Use your tools to research events in the given location for the given date span. Your final response should be a comprehensive report on events in the area for that time period."
+    )
+    return events_report
+```
+
 ### Streaming Responses
 
-To stream the output of a task, you can set the flag to true and use the `Task.process_stream()` method. This method takes the output of the `Task.create()` method and processes it.
+To stream the output of a task, you can set the flag to true and use the `Task.process_stream()` method.
 
+**Synchronous streaming:**
 ```python
 streaming_output = Task.create(
     agent=agent,
@@ -66,10 +116,26 @@ streaming_output = Task.create(
 Task.process_stream(streaming_output)
 ```
 
+**Asynchronous streaming:**
+```python
+import asyncio
+
+async def main():
+    streaming_output = await Task.create_async(
+        agent=agent,
+        instruction="What is 157 + 42? What is the answer of that - 32? Write your answer in a poem.",
+        stream=True
+    )
+    Task.process_stream(streaming_output)
+
+asyncio.run(main())
+```
+
 ### Initial Responses
 
-Initial responses enable the LLM to provide a preliminary answer before executing any tools, giving users immediate feedback while more detailed processing occurs in the background. This is especially useful in conversational contexts.
+Initial responses enable the LLM to provide a preliminary answer before executing any tools, giving users immediate feedback while more detailed processing occurs in the background.
 
+**Synchronous:**
 ```python
 output = Task.create(
     agent=agent,
@@ -79,10 +145,26 @@ output = Task.create(
 print(output)
 ```
 
+**Asynchronous:**
+```python
+import asyncio
+
+async def main():
+    output = await Task.create_async(
+        agent=agent,
+        instruction="What is 157 + 42? What is the answer of that - 32? Write your answer in a poem.",
+        initial_response=True
+    )
+    print(output)
+
+asyncio.run(main())
+```
+
 ### Tool Summaries
 
-Tool summaries provide explanatory context for each tool call, helping users understand why specific tools were used and what they're intended to accomplish. This transparency is valuable for debugging, auditing, and understanding the LLM's decision-making process.
+Tool summaries provide explanatory context for each tool call, helping users understand why specific tools were used and what they're intended to accomplish.
 
+**Synchronous:**
 ```python
 output = Task.create(
     agent=agent,
@@ -91,6 +173,65 @@ output = Task.create(
 )
 print(output)
 ```
+
+**Asynchronous:**
+```python
+import asyncio
+
+async def main():
+    output = await Task.create_async(
+        agent=agent,
+        instruction="What is 157 + 42? What is the answer of that - 32? Write your answer in a poem.",
+        tool_summaries=True
+    )
+    print(output)
+
+asyncio.run(main())
+```
+
+### Maximum Iterations Control
+
+Orchestra v1.0.0 introduces configurable iteration limits for tool loops, providing better control over task execution:
+
+**Synchronous:**
+```python
+output = Task.create(
+    agent=agent,
+    instruction="Complex task that might require many tool calls",
+    max_iterations=25  # Limit to 25 iterations instead of default 50
+)
+print(output)
+```
+
+**Asynchronous:**
+```python
+import asyncio
+
+async def main():
+    output = await Task.create_async(
+        agent=agent,
+        instruction="Complex task that might require many tool calls",
+        max_iterations=25  # Limit to 25 iterations instead of default 50
+    )
+    print(output)
+
+asyncio.run(main())
+```
+
+### Choosing Between Sync and Async
+
+**Use `Task.create()` when:**
+- Working in a synchronous codebase
+- Building simple scripts or command-line tools
+- You need blocking execution until task completion
+- Working with frameworks that don't support async
+
+**Use `Task.create_async()` when:**
+- Building web applications (FastAPI, Django async views)
+- Working with other async libraries
+- Need to run multiple tasks concurrently
+- Building event-driven applications
+- Want maximum performance and resource efficiency
 
 ### Logging
 

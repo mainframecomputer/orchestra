@@ -1,10 +1,19 @@
 # LLMs
 
-Mainframe-Orchestra supports integrating a variety of language models, providing developers with the flexibility to choose the most appropriate model for their specific use case. The Language Model (LLM) interfaces in Orchestra offer a unified and consistent way to interact with various AI models from different providers.
+Mainframe-Orchestra supports integrating a variety of language models through a unified LiteLLM interface, providing developers with the flexibility to choose the most appropriate model for their specific use case while maintaining a consistent API across all providers.
+
+### Unified LLM Architecture
+
+Orchestra v1.0.0 introduces a major architectural change: all language model interactions are now handled through LiteLLM, a unified interface that supports 100+ LLM providers. This means:
+
+- **Single dependency**: Instead of managing separate dependencies for each provider (anthropic, openai, groq, etc.), Orchestra now uses only LiteLLM
+- **Consistent interface**: All models work the same way regardless of provider
+- **Automatic fallback**: You can specify multiple models in a list for automatic failover
+- **Simplified configuration**: One configuration approach for all providers
 
 ### LLM Interface Structure
 
-The LLM interfaces are defined in the llm.py module. This module contains several classes, each representing a different LLM provider:
+The LLM interfaces are defined in the llm.py module using the unified `LiteLLMProvider` class. This module contains several model classes, each representing a different LLM provider:
 
 - OpenaiModels
 - AnthropicModels
@@ -14,14 +23,15 @@ The LLM interfaces are defined in the llm.py module. This module contains severa
 - TogetheraiModels
 - GeminiModels
 - DeepseekModels
+- HuggingFaceModels
 
-Each class contains static methods corresponding to specific models offered by the provider, following a consistent structure.
+Each class contains static methods corresponding to specific models offered by the provider, all using the same underlying LiteLLM interface.
 
 ### Supported Language Models
 
-Orchestra supports a wide range of language models from various providers. Here's an overview of some supported models:
+Orchestra supports a wide range of language models from various providers through LiteLLM. Here's an overview of some supported models:
 
-- OpenAI Models: GPT-4.5-preview, GPT-4o, GPT-4, GPT-4 Turbo, GPT-3.5 Turbo
+- OpenAI Models: GPT-4o, GPT-4, GPT-4 Turbo, GPT-3.5 Turbo, o1, o3, o4
 - Anthropic Models: Claude-3 Opus, Claude-3 Sonnet, Claude-3 Haiku, Claude-3.5 Sonnet, Claude-3.7 Sonnet
 - Openrouter Models: Various models including Anthropic Claude, OpenAI GPT, Llama, Mistral AI
 - Ollama Models: Llama 3, Gemma, Mistral, Qwen, Phi-3, Llama 2, CodeLlama, LLaVA, Mixtral
@@ -29,6 +39,7 @@ Orchestra supports a wide range of language models from various providers. Here'
 - Togetherai Models: Meta Llama 3.1, Mixtral, Mistral, many other open source models
 - Gemini Models: Gemini 2.0, Gemini 1.5 Pro, Gemini 1.5 Flash, Gemini 1.5 Pro (Flash)
 - Deepseek Models: Deepseek Reasoner, Deepseek Chat
+- HuggingFace Models: Access to thousands of models via Hugging Face Inference API
 
 ### Integrating Language Models
 
@@ -40,7 +51,7 @@ from mainframe_orchestra import OpenrouterModels
 llm = OpenrouterModels.haiku
 ```
 
-In this example, we're using the OpenrouterModels.haiku model. You can then assign llm to any agent. The llm parameter is passed to the Task.create() method, allowing the task to use the specified language model for generating responses.This is helpful if you want to use the same model for multiple agents. Alternatively, you can pass the model directly to the agent as a parameter, like `llm=OpenrouterModels.haiku`, if you want certain agents to use specific models.
+In this example, we're using the OpenrouterModels.haiku model. You can then assign llm to any agent. The llm parameter is passed to the Task.create_async() method, allowing the task to use the specified language model for generating responses. This is helpful if you want to use the same model for multiple agents. Alternatively, you can pass the model directly to the agent as a parameter, like `llm=OpenrouterModels.haiku`, if you want certain agents to use specific models.
 
 ### Language Model Selection Considerations
 
@@ -94,7 +105,6 @@ llm = OpenrouterModels.custom_model("meta-llama/llama-3-70b-instruct")
 
 # Ollama custom model
 llm = OllamaModels.custom_model("llama3")
-
 ```
 
 This approach allows you to use models that may not have pre-built functions in Orchestra, or to easily switch between different versions or fine-tuned variants of models. Remember to ensure that you have the necessary API access and credentials for the custom model you're trying to use.
@@ -152,7 +162,16 @@ response, error = await OpenaiModels.gpt_4o(
 
 This flexibility allows you to easily switch between different OpenAI-compatible endpoints based on your specific needs, without changing your code structure.
 
+### Benefits of the LiteLLM Architecture
+
+The unified LiteLLM architecture in Orchestra v1.0.0 provides several key benefits:
+
+- **Simplified Dependencies**: No need to install and manage separate packages for each LLM provider
+- **Consistent Interface**: Same API patterns across all providers reduce learning curve
+- **Automatic Parameter Handling**: LiteLLM automatically handles provider-specific parameters
+- **Enhanced Reliability**: Built-in retry logic and error handling across all providers
+- **Future-Proof**: Easy to add support for new providers as they become available
+
 ### Conclusion
 
-The Orchestra framework provides a robust and flexible approach to integrating a wide range of language models. By allowing language model selection at the task level and providing a consistent interface across different providers, Orchestra empowers developers to optimize their AI workflows for specific use cases while maintaining code simplicity and reusability.
-
+The Orchestra framework provides a robust and flexible approach to integrating a wide range of language models through its unified LiteLLM interface. By consolidating all provider interactions into a single, consistent API while maintaining the ability to specify models at the task level, Orchestra empowers developers to optimize their AI workflows for specific use cases while maintaining code simplicity and reusability. The automatic fallback capabilities and simplified dependency management make it easier than ever to build reliable, production-ready AI applications.

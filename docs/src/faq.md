@@ -47,8 +47,9 @@ researcher = Agent(
 
 ##### How do I set up a task?
 
-To set up a task, you can wrap the Task.create method in a function that imports what it needs to perform the task. This makes the task modular and easy to use in sequences:
+To set up a task, you can wrap the Task creation method in a function. Orchestra v1.0.0 provides both synchronous and asynchronous options:
 
+**Synchronous approach (simpler):**
 ```python
 from mainframe_orchestra import Task, OpenrouterModels
 
@@ -64,7 +65,47 @@ def research_task(topic):
 # Usage
 topic = "artificial intelligence"
 research_result = research_task(topic)
+print(research_result)
 ```
+
+**Asynchronous approach (more performant):**
+```python
+import asyncio
+from mainframe_orchestra import Task, OpenrouterModels
+
+async def research_task(topic):
+    result = await Task.create_async(
+        agent="web_researcher",
+        context=f"The user wants information about {topic}",
+        instruction=f"Explain {topic} and provide a comprehensive summary",
+        llm=OpenrouterModels.haiku
+    )
+    return result
+
+# Usage
+async def main():
+    topic = "artificial intelligence"
+    research_result = await research_task(topic)
+    print(research_result)
+
+asyncio.run(main())
+```
+
+##### Should I use Task.create() or Task.create_async()?
+
+Orchestra v1.0.0 separates synchronous and asynchronous task execution:
+
+**Use `Task.create()` when:**
+- Working in a synchronous codebase
+- Building simple scripts or command-line tools
+- You need blocking execution until task completion
+- Working with frameworks that don't support async
+
+**Use `Task.create_async()` when:**
+- Building web applications (FastAPI, Django async views)
+- Working with other async libraries
+- Need to run multiple tasks concurrently
+- Want maximum performance and resource efficiency
 
 ### Language Models and Customization
 
@@ -85,8 +126,23 @@ llm = AnthropicModels.custom_model(model_name="claude-3-opus-20240229")
 llm = OllamaModels.custom_model(model_name="llama3.1:405b")
 
 # OpenAI custom model
-llm = OpenAIModels.custom_model(model_name="gpt-4o-mini")
+llm = OpenaiModels.custom_model(model_name="gpt-4o-mini")
 ```
+
+##### What changed with LLM providers in v1.0.0?
+
+Orchestra v1.0.0 introduces a unified LiteLLM architecture that replaces individual provider dependencies:
+
+**Before v1.0.0:**
+- Required separate installations: `anthropic`, `openai`, `groq`, etc.
+- Different APIs for each provider
+- Manual error handling for each provider
+
+**v1.0.0 and later:**
+- Single `litellm` dependency handles all providers
+- Consistent API across all providers
+- Built-in fallback support and error handling
+- Simplified configuration and setup
 
 ### Privacy and Local Usage
 
@@ -120,4 +176,3 @@ Use environment variables to manage API keys required by various tools. This enh
 ##### Can I create custom tools?
 
 Yes, you can create custom tools following the same pattern as the built-in ones. This allows you to extend Orchestra's functionality to meet your specific needs.
-

@@ -31,4 +31,13 @@ You can also use `0` or `no` as values to disable it, or `1` or `yes` to enable 
    - Set to enable it (`true`, `1`, or `yes`)
    - Not set at all (defaults to enabled when API key exists)
 
-When enabled, Braintrust will trace all tool calls and requests to OpenAI, OpenRouter, Groq, Together AI, and Deepseek, providing detailed logs and analytics in your Braintrust dashboard.
+When enabled, Braintrust will trace all tool calls and LLM requests made through Orchestra's unified LiteLLM interface. This includes requests to all supported providers such as OpenAI, OpenRouter, Groq, Together AI, Deepseek, Anthropic, Google, and others, providing detailed logs and analytics in your Braintrust dashboard.
+
+### LiteLLM Integration Benefits for Observability
+
+Orchestra v1.0.0's unified LiteLLM architecture provides enhanced observability benefits:
+
+- **Consistent Logging**: All LLM requests are logged in a standardized format regardless of provider
+- **Unified Metrics**: Performance metrics are comparable across different providers
+- **Simplified Monitoring**: Single integration point for observability tools
+- **Enhanced Error Tracking**: Standardized error handling and reporting across all providers

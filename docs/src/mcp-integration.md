@@ -53,7 +53,7 @@ async def main():
         )
 
         # Create a task using the agent
-        result = await Task.create(
+        result = await Task.create_async(
             agent=agent,
             instruction="Your instruction here"
         )
@@ -167,7 +167,7 @@ async def main():
         )
 
         # Create a task
-        result = await Task.create(
+        result = await Task.create_async(
             agent=agent,
             instruction="You need to calculate the sum of 42 and 58, and then multiply the result by 5. Respond with the final answer."
         )
@@ -210,7 +210,7 @@ async def run_fetch_mcp():
             )
 
             # Create a task with these tools
-            result = await Task.create(
+            result = await Task.create_async(
                 agent=agent,
                 instruction="Fetch the content from docs.orchestra.org and summarize what the website is about.",
             )
@@ -265,7 +265,7 @@ async def run_filesystem_mcp():
             )
 
             # Create a task with these tools
-            result = await Task.create(
+            result = await Task.create_async(
                 agent=agent,
                 instruction="List the files on my desktop and summarize what you find.",
             )
@@ -311,7 +311,7 @@ async def run_agent_with_mcp_tools():
             )
 
             # Create the task with step-by-step instructions
-            result = await Task.create(
+            result = await Task.create_async(
                 agent=agent,
                 instruction="""
                 Please perform the following web automation tasks:
@@ -406,7 +406,7 @@ async def run_slack_mcp():
                     break
 
                 # Create a task with these tools
-                result = await Task.create(
+                result = await Task.create_async(
                     agent=slack_agent,
                     instruction=user_instruction,
                     messages=conversation_history
@@ -461,7 +461,7 @@ async def run_agent_with_mcp_tools():
 
             user_input = input("Enter a request: ")
 
-            result = await Task.create(
+            result = await Task.create_async(
                 agent=agent,
                 instruction=user_input
             )

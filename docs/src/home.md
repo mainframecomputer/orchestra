@@ -19,7 +19,7 @@ Tasks are the fundamental building blocks of Orchestra. Each task represents a s
 
 ##### Agents
 
-An Agent in Orchestra represents a specific role or persona with a clear goal. It can have optional attributes, and is powered by a selected language model (LLM). This structure allows Agents to maintain a consistent persona across multiple tasks. Agents can also be assigned tools, which are specific deterministic functions that the agent can use to interact with libraries, APIs, the internet, and more. 
+An Agent in Orchestra represents a specific role or persona with a clear goal. It can have optional attributes, and is powered by a selected language model (LLM). This structure allows Agents to maintain a consistent persona across multiple tasks. Agents can also be assigned tools, which are specific deterministic functions that the agent can use to interact with libraries, APIs, the internet, and more.
 
 ##### Tools
 
@@ -27,7 +27,7 @@ Tools in Orchestra are wrappers around external services or APIs, as well as uti
 
 ##### Language Models
 
-Orchestra supports various Language Models out-of-the-box, including models from OpenAI, Anthropic, open source models from OpenRouter, Groq, and Ollama where they can be locally hosted on device. 
+Orchestra supports various Language Models through a unified LiteLLM interface, providing access to models from OpenAI, Anthropic, Google, Groq, Together AI, and many others. This unified approach simplifies model switching and enables automatic fallback capabilities.
 
 ### Getting Started
 
@@ -45,15 +45,18 @@ pip install mainframe-orchestra
 
 Once you have installed Orchestra, you can start building your agentic workflows and multi-agent teams.
 
+### Simple Examples
+
+#### Synchronous Usage (Simpler)
 ```python
-# Single Agent example
+# Single Agent example - Synchronous
 from mainframe_orchestra import Task, Agent, WebTools, OpenrouterModels
 
 researcher = Agent(
     role="research assistant",
     goal="answer user queries",
     attributes="thorough in web research",
-    tools={WebTools.serper_search},
+    tools=[WebTools.serper_search],
     llm=OpenrouterModels.haiku
 )
 
@@ -72,13 +75,44 @@ if __name__ == "__main__":
     main()
 ```
 
+#### Asynchronous Usage (More Performant)
 ```python
-# Multi Agent example
+# Single Agent example - Asynchronous
+import asyncio
+from mainframe_orchestra import Task, Agent, WebTools, OpenrouterModels
+
+async def main():
+    researcher = Agent(
+        role="research assistant",
+        goal="answer user queries",
+        attributes="thorough in web research",
+        tools=[WebTools.serper_search],
+        llm=OpenrouterModels.haiku
+    )
+
+    async def research_task(agent, topic):
+        return await Task.create_async(
+            agent=agent,
+            instruction=f"Research {topic} and provide a summary of the top 3 results."
+        )
+
+    topic = input("Enter a topic to research: ")
+    response = await research_task(researcher, topic)
+    print(response)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Multi-Agent Example
+
+```python
+# Multi Agent example - Showing both sync and async patterns
 from mainframe_orchestra import Agent, Task, WebTools, WikipediaTools, AmadeusTools, OpenrouterModels, set_verbosity
-from datetime import datetime
 
 set_verbosity(1)
 
+# Define agents (same for both sync and async)
 web_research_agent = Agent(
     role="web research agent",
     goal="search the web thoroughly for travel information",
@@ -95,58 +129,44 @@ travel_agent = Agent(
     tools=[AmadeusTools.search_flights, WebTools.serper_search, WebTools.get_weather_data]
 )
 
-def research_destination(destination, interests):
+# Synchronous approach
+def research_destination_sync(destination, interests):
     return Task.create(
         agent=web_research_agent,
         context=f"User Destination: {destination}\nUser Interests: {interests}",
         instruction=f"Research {destination} and write a comprehensive report with images embedded in markdown."
     )
 
-def research_events(destination, dates, interests):
-    return Task.create(
-        agent=web_research_agent,
-        context=f"Destination: {destination}\nDates: {dates}\nInterests: {interests}",
-        instruction="Research events in the given location for the given date span."
-    )
-
-def research_weather(destination, dates):
-    return Task.create(
-        agent=travel_agent,
-        context=f"Location: {destination}\nDates: {dates}",
-        instruction="Search for weather information and write a report."
-    )
-
-def search_flights(current_location, destination, dates):
-    return Task.create(
-        agent=travel_agent,
-        context=f"From: {current_location}\nTo: {destination}\nDates: {dates}",
-        instruction="Search for flights and report on the best options."
-    )
-
-def write_travel_report(destination_report, events_report, weather_report, flight_report):
-    return Task.create(
-        agent=travel_agent,
-        context=f"Reports: {destination_report}, {events_report}, {weather_report}, {flight_report}",
-        instruction="Write a comprehensive travel plan based on the provided reports."
-    )
-
-def main():
+def main_sync():
     destination = input("Enter a destination: ")
     interests = input("Enter your interests: ")
-    dates = input("Enter your dates of travel: ")
-    current_location = input("Enter your current location: ")
 
-    destination_report = research_destination(destination, interests)
-    events_report = research_events(destination, dates, interests)
-    weather_report = research_weather(destination, dates)
-    flight_report = search_flights(current_location, destination, dates)
-    travel_report = write_travel_report(destination_report, events_report, weather_report, flight_report)
-    print(travel_report)
+    destination_report = research_destination_sync(destination, interests)
+    print(destination_report)
 
+# Asynchronous approach (for concurrent execution)
+import asyncio
+
+async def research_destination_async(destination, interests):
+    return await Task.create_async(
+        agent=web_research_agent,
+        context=f"User Destination: {destination}\nUser Interests: {interests}",
+        instruction=f"Research {destination} and write a comprehensive report with images embedded in markdown."
+    )
+
+async def main_async():
+    destination = input("Enter a destination: ")
+    interests = input("Enter your interests: ")
+
+    destination_report = await research_destination_async(destination, interests)
+    print(destination_report)
+
+# Choose your approach
 if __name__ == "__main__":
-    main()
+    # Uncomment one of these:
+    # main_sync()  # For synchronous execution
+    asyncio.run(main_async())  # For asynchronous execution
 ```
-
 
 ### Multi-Agent Teams
 
