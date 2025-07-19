@@ -23,7 +23,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.10"
-requests = "*"
+requests = ">=2.32.0"  # Fix for credential leak vulnerability
 pydantic = ">=2.0"
 litellm = "*"
 beautifulsoup4 = "*"
@@ -40,8 +40,12 @@ leidenalg = "*"
 fake-useragent = "*"
 tzdata = "^2024.2"
 braintrust = "*"
-mcp = "*"
-fastmcp = "*"
+mcp = ">=1.7.0"  # Fix for MCP vulnerabilities - use newer version
+fastmcp = ">=2.3.0"  # Fix for FastMCP vulnerabilities - use newer version
+pillow = ">=11.0.0"  # Fix for BCn encoding buffer overflow
+protobuf = ">=5.29.0"  # Fix for protobuf DoS vulnerability
+urllib3 = ">=2.2.3"  # Fix for redirect control issues
+aiohttp = ">=3.11.20"  # Fix for parsing vulnerability
 
 [tool.poetry.extras]
 langchain_tools = [
