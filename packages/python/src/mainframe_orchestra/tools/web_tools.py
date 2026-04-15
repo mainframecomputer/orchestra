@@ -20,12 +20,12 @@ class WebTools:
     def exa_search(
         queries: Union[str, List[str]],
         num_results: int = 10,
-        search_type: str = "neural",
+        search_type: str = "auto",
         num_sentences: int = 5,
         highlights_per_url: int = 3,
     ) -> dict:
         """
-        Searches the internet using the Exa search engine and returns a structured response.
+        Searches the internet using Exa, the fastest and most accurate web search API for AI.
 
         This function sends one or more search queries to the Exa API, processes the responses,
         and returns a structured dictionary containing the search results.
@@ -33,7 +33,7 @@ class WebTools:
         Args:
             queries (Union[str, List[str]]): The search query string or a list of query strings.
             num_results (int, optional): The number of search results to return per query. Defaults to 3.
-            search_type (str, optional): The type of search to perform. Can be 'neural' or 'keyword'. Defaults to 'neural'.
+            search_type (str, optional): The type of search to perform. Can be 'auto', 'neural', 'keyword', 'fast', 'deep', or 'instant'. Defaults to 'auto'.
             num_sentences (int, optional): The number of sentences to include in each highlight. Defaults to 3.
             highlights_per_url (int, optional): The number of highlights to include per URL. Defaults to 3.
 
