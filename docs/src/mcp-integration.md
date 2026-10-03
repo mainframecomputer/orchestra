@@ -78,6 +78,56 @@ Orchestra can work with any MCP-compatible server. Here are some popular MCP too
 
 ## Examples
 
+### Keyless Web Search with Parallel
+
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) provides
+free web search and page fetching without a Parallel API key. The runnable
+[example](https://github.com/mainframecomputer/orchestra/blob/main/examples/python/mcp/mcp_parallel_search.py)
+connects through Orchestra's existing stdio adapter using
+[`mcp-remote`](https://github.com/geelen/mcp-remote), which bridges stdio to the
+server's Streamable HTTP endpoint. It discovers `web_search` and `web_fetch` and
+passes the tools to an Orchestra agent when requested.
+
+Install Python 3.10+ and Node.js 22+ with `npx` on your PATH. From the repository
+root, install Orchestra and run a search:
+
+```bash
+pip install -e packages/python "mcp>=1.7,<2" "fastmcp>=2.3,<3"
+python examples/python/mcp/mcp_parallel_search.py "How do Orchestra MCP tools work?"
+```
+
+This prints source URLs and search excerpts without model credentials. On the
+first run, `npx -y` downloads the pinned `mcp-remote@0.14.3` bridge. Internet access
+is required, and your query is sent to Parallel's hosted service.
+
+Use MCP 1.x with Orchestra 1.0.0's adapter: it reads the `inputSchema` field that
+MCP 2.x renamed to `input_schema`. The install command keeps the MCP dependencies
+compatible without changing the library's dependency declarations.
+
+To produce an agent answer, configure `OPENAI_API_KEY` and add `--agent`:
+
+```bash
+python examples/python/mcp/mcp_parallel_search.py "How do Orchestra MCP tools work?" --agent
+```
+
+The agent mode uses `OpenaiModels.gpt_4o` and incurs your model provider's normal
+charges. To use another Orchestra model, import `run_parallel_search` and pass
+your model callable as `llm`. Search remains keyless in either mode.
+
+The connection explicitly uses `https://search.parallel.ai/mcp` with
+`--transport http-only` and sends `User-Agent: mainframe-orchestra/<version>` on
+HTTP requests. Tools are scoped to this example's `parallel_search` connection;
+existing WebTools choices and application configuration remain unchanged.
+The async context manager closes the bridge connection after the search or task.
+Connection errors and direct search errors propagate to the caller. Agent tool
+errors use Orchestra's existing Task handling.
+
+If your network requires a proxy or custom certificate, the example forwards
+`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and their lowercase equivalents) and
+`NODE_EXTRA_CA_CERTS` to the bridge, with `--enable-proxy`. You can set
+`MCP_REMOTE_CONFIG_DIR` to choose a separate bridge authentication cache directory.
+It does not forward model or Parallel API keys to the bridge.
+
 ### Calculator Example with FastMCP
 
 First, create a FastMCP server file:
